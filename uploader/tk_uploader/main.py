@@ -179,10 +179,11 @@ class TiktokVideo(object):
 
         await context.storage_state(path=f"{self.account_file}")  # save cookie
         tiktok_logger.info('  [-] update cookie！')
-        await asyncio.sleep(2)  # close delay for look the video status
-        # close all
-        await context.close()
-        await browser.close()
+        tiktok_logger.success('  [-]视频已成功发布，浏览器窗口将保持打开状态，请手动关闭')
+        await asyncio.sleep(3600)  # 保持浏览器打开 1 小时，方便手动操作
+        # 注释掉关闭代码，让浏览器保持打开
+        # await context.close()
+        # await browser.close()
 
     async def add_title_tags(self, page):
 

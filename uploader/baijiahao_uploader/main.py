@@ -179,10 +179,11 @@ class BaiJiaHaoVideo(object):
 
         await context.storage_state(path=self.account_file)  # 保存cookie
         baijiahao_logger.info('cookie更新完毕！')
-        await asyncio.sleep(2)  # 这里延迟是为了方便眼睛直观的观看
-        # 关闭浏览器上下文和浏览器实例
-        await context.close()
-        await browser.close()
+        baijiahao_logger.success('  [-]视频已成功发布，浏览器窗口将保持打开状态，请手动关闭')
+        await asyncio.sleep(3600)  # 保持浏览器打开 1 小时，方便手动操作
+        # 注释掉关闭代码，让浏览器保持打开
+        # await context.close()
+        # await browser.close()
 
 
     @async_retry(timeout=300)  # 例如，最多重试3次，超时时间为180秒
@@ -495,10 +496,11 @@ class BaiJiaHaoVideo(object):
         # 退出前保存 storage 信息
         await context.storage_state(path=self.account_file)  # 保存cookie
         baijiahao_logger.info('cookie更新完毕！')
-        await asyncio.sleep(2)  # 这里延迟是为了方便眼睛直观的观看
-        # 关闭浏览器上下文和浏览器实例
-        await context.close()
-        await browser.close()
+        baijiahao_logger.success('  [-]视频已成功发布，浏览器窗口将保持打开状态，请手动关闭')
+        await asyncio.sleep(3600)  # 保持浏览器打开 1 小时，方便手动操作
+        # 注释掉关闭代码，让浏览器保持打开
+        # await context.close()
+        # await browser.close()
 
 
     async def mainAi(self):

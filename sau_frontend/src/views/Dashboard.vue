@@ -53,6 +53,12 @@
                 <el-tooltip content="小红书账号" placement="top">
                   <el-tag size="small" type="info">{{ platformStats.xiaohongshu }}</el-tag>
                 </el-tooltip>
+                <el-tooltip content="哔哩哔哩账号" placement="top">
+                  <el-tag size="small" type="primary">{{ platformStats.bilibili }}</el-tag>
+                </el-tooltip>
+                <el-tooltip content="百家号账号" placement="top">
+                  <el-tag size="small" type="primary">{{ platformStats.baijiahao }}</el-tag>
+                </el-tooltip>
               </div>
             </div>
           </el-card>
@@ -151,8 +157,12 @@
           <h2>最近任务</h2>
           <el-button text>查看全部</el-button>
         </div>
-        
-        <el-table :data="recentTasks" style="width: 100%">
+
+        <div v-if="recentTasks.length === 0" class="empty-tasks">
+          <el-empty description="暂无任务记录" />
+        </div>
+
+        <el-table v-else :data="recentTasks" style="width: 100%">
           <el-table-column prop="title" label="任务名称" width="250" />
           <el-table-column prop="platform" label="平台" width="120">
             <template #default="scope">
@@ -179,17 +189,17 @@
           <el-table-column label="操作">
             <template #default="scope">
               <el-button size="small" @click="viewTaskDetail(scope.row)">查看</el-button>
-              <el-button 
-                size="small" 
-                type="primary" 
+              <el-button
+                size="small"
+                type="primary"
                 v-if="scope.row.status === '待执行'"
                 @click="executeTask(scope.row)"
               >
                 执行
               </el-button>
-              <el-button 
-                size="small" 
-                type="danger" 
+              <el-button
+                size="small"
+                type="danger"
                 v-if="scope.row.status !== '已完成' && scope.row.status !== '已失败'"
                 @click="cancelTask(scope.row)"
               >
@@ -204,90 +214,78 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { 
-  User, UserFilled, Platform, List, Document, 
-  Upload, Timer, DataAnalysis 
+import {
+  User, UserFilled, Platform, List, Document,
+  Upload, Timer, DataAnalysis
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useAccountStore } from '@/stores/account'
+import { useAppStore } from '@/stores/app'
+import { accountApi } from '@/api/account'
+import { materialApi } from '@/api/material'
 
 const router = useRouter()
+const accountStore = useAccountStore()
+const appStore = useAppStore()
 
-// 账号统计数据
-const accountStats = reactive({
-  total: 12,
-  normal: 10,
-  abnormal: 2
-})
+// 账号统计数据 - 从真实账号数据计算
+const accountStats = computed(() => {
+  const accounts = accountStore.accounts
+  const total = accounts.length
+  const normal = accounts.filter(acc => acc.status === '正常').length
+  const abnormal = accounts.filter(acc => acc.status === '异常').length
 
-// 平台统计数据
-const platformStats = reactive({
-  total: 4,
-  kuaishou: 3,
-  douyin: 4,
-  channels: 2,
-  xiaohongshu: 3
-})
-
-// 任务统计数据
-const taskStats = reactive({
-  total: 24,
-  completed: 18,
-  inProgress: 5,
-  failed: 1
-})
-
-// 内容统计数据
-const contentStats = reactive({
-  total: 36,
-  published: 30,
-  draft: 6
-})
-
-// 最近任务数据
-const recentTasks = ref([
-  {
-    id: 1,
-    title: '快手视频自动发布',
-    platform: '快手',
-    account: '快手账号1',
-    createTime: '2024-05-01 10:30:00',
-    status: '已完成'
-  },
-  {
-    id: 2,
-    title: '抖音视频定时发布',
-    platform: '抖音',
-    account: '抖音账号1',
-    createTime: '2024-05-01 11:15:00',
-    status: '进行中'
-  },
-  {
-    id: 3,
-    title: '视频号内容上传',
-    platform: '视频号',
-    account: '视频号账号1',
-    createTime: '2024-05-01 14:20:00',
-    status: '待执行'
-  },
-  {
-    id: 4,
-    title: '小红书图文发布',
-    platform: '小红书',
-    account: '小红书账号1',
-    createTime: '2024-05-01 16:45:00',
-    status: '已失败'
-  },
-  {
-    id: 5,
-    title: '快手短视频批量上传',
-    platform: '快手',
-    account: '快手账号2',
-    createTime: '2024-05-02 09:10:00',
-    status: '待执行'
+  return {
+    total,
+    normal,
+    abnormal
   }
-])
+})
+
+// 平台统计数据 - 从真实账号数据计算
+const platformStats = computed(() => {
+  const accounts = accountStore.accounts
+  const platforms = accounts.reduce((acc, curr) => {
+    if (!acc[curr.platform]) {
+      acc[curr.platform] = 0
+    }
+    acc[curr.platform]++
+    return acc
+  }, {})
+
+  return {
+    total: Object.keys(platforms).length,
+    kuaishou: platforms['快手'] || 0,
+    douyin: platforms['抖音'] || 0,
+    channels: platforms['视频号'] || 0,
+    xiaohongshu: platforms['小红书'] || 0,
+    bilibili: platforms['哔哩哔哩'] || 0,
+    baijiahao: platforms['百家号'] || 0
+  }
+})
+
+// 任务统计数据 - 暂时设为0，因为后端可能没有任务记录功能
+const taskStats = reactive({
+  total: 0,
+  completed: 0,
+  inProgress: 0,
+  failed: 0
+})
+
+// 内容统计数据 - 从素材数据计算
+const contentStats = computed(() => {
+  const materials = appStore.materials
+  return {
+    total: materials.length,
+    published: 0, // 暂时没有发布记录功能
+    draft: materials.length
+  }
+})
+
+// 最近任务数据 - 暂时禁用，等待后端实现任务记录功能
+const recentTasks = ref([])
 
 // 根据平台获取标签类型
 const getPlatformTagType = (platform) => {
@@ -295,7 +293,9 @@ const getPlatformTagType = (platform) => {
     '快手': 'success',
     '抖音': 'danger',
     '视频号': 'warning',
-    '小红书': 'info'
+    '小红书': 'info',
+    '哔哩哔哩': 'primary',
+    '百家号': 'primary'
   }
   return typeMap[platform] || 'info'
 }
@@ -375,6 +375,36 @@ const cancelTask = (task) => {
       // 取消操作
     })
 }
+
+// 加载账号数据
+const loadAccountData = async () => {
+  try {
+    const res = await accountApi.getAccounts()
+    if (res.code === 200 && res.data) {
+      accountStore.setAccounts(res.data)
+    }
+  } catch (error) {
+    console.error('获取账号数据失败:', error)
+  }
+}
+
+// 加载素材数据
+const loadMaterialData = async () => {
+  try {
+    const res = await materialApi.getAllMaterials()
+    if (res.code === 200 && res.data) {
+      appStore.setMaterials(res.data)
+    }
+  } catch (error) {
+    console.error('获取素材数据失败:', error)
+  }
+}
+
+// 页面挂载时加载数据
+onMounted(() => {
+  loadAccountData()
+  loadMaterialData()
+})
 </script>
 
 <style lang="scss" scoped>

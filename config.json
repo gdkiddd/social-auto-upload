@@ -1,0 +1,32 @@
+{
+  "keep_browser_open": true,
+  "keep_browser_duration": 3600,
+  "bilibili_tid": 36,
+  "bilibili_schedule": false,
+  "schedule_time": "2026-01-22 22:00",
+  "platforms": {
+    "xiaohongshu": {
+      "enabled": true,
+      "keep_browser_open": false
+    },
+    "douyin": {
+      "enabled": true,
+      "keep_browser_open": false
+    },
+    "tencent": {
+      "enabled": true,
+      "keep_browser_open": false
+    },
+    "kuaishou": {
+      "enabled": true,
+      "keep_browser_open": false
+    },
+    "baijiahao": {
+      "enabled": true,
+      "keep_browser_open": false
+    },
+    "bilibili": {
+      "enabled": true
+    }
+  }
+}

@@ -7,17 +7,31 @@ from utils.log import bilibili_logger
 
 
 def extract_keys_from_json(data):
-    """Extract specified keys from the provided JSON data."""
+    """Extract specified keys from the provided JSON data.
+    支持两种格式：
+    1. biliup 格式：{"cookie_info": {"cookies": [...]}, "token_info": {}}
+    2. Playwright storage_state 格式：{"cookies": [...], "origins": [...]}
+    """
     keys_to_extract = ["SESSDATA", "bili_jct", "DedeUserID__ckMd5", "DedeUserID", "access_token"]
     extracted_data = {}
 
+    # 检测格式并提取 cookies
+    if 'cookie_info' in data and 'cookies' in data['cookie_info']:
+        # biliup 格式
+        cookies_list = data['cookie_info']['cookies']
+    elif 'cookies' in data:
+        # Playwright storage_state 格式
+        cookies_list = data['cookies']
+    else:
+        raise ValueError("无法识别的 cookie 文件格式")
+
     # Extracting cookie data
-    for cookie in data['cookie_info']['cookies']:
+    for cookie in cookies_list:
         if cookie['name'] in keys_to_extract:
             extracted_data[cookie['name']] = cookie['value']
 
-    # Extracting access_token
-    if "access_token" in data['token_info']:
+    # Extracting access_token (biliup 格式)
+    if "token_info" in data and "access_token" in data['token_info']:
         extracted_data['access_token'] = data['token_info']['access_token']
 
     return extracted_data

@@ -10,7 +10,7 @@ from flask_cors import CORS
 from myUtils.auth import check_cookie
 from flask import Flask, request, jsonify, Response, render_template, send_from_directory
 from conf import BASE_DIR
-from myUtils.login import get_tencent_cookie, douyin_cookie_gen, get_ks_cookie, xiaohongshu_cookie_gen
+from myUtils.login import get_tencent_cookie, douyin_cookie_gen, get_ks_cookie, xiaohongshu_cookie_gen, bilibili_cookie_gen, baijiahao_cookie_gen
 from myUtils.postVideo import post_video_tencent, post_video_DouYin, post_video_ks, post_video_xhs
 
 active_queues = {}
@@ -63,11 +63,21 @@ def upload_file():
         # 保存文件到指定位置
         uuid_v1 = uuid.uuid1()
         print(f"UUID v1: {uuid_v1}")
-        filepath = Path(BASE_DIR / "videoFile" / f"{uuid_v1}_{file.filename}")
-        file.save(filepath)
+
+        # 确保目录存在
+        video_dir = Path(BASE_DIR / "videoFile")
+        video_dir.mkdir(parents=True, exist_ok=True)
+
+        filepath = video_dir / f"{uuid_v1}_{file.filename}"
+        file.save(str(filepath))
+        print(f"文件已保存到: {filepath}")
+
         return jsonify({"code":200,"msg": "File uploaded successfully", "data": f"{uuid_v1}_{file.filename}"}), 200
     except Exception as e:
-        return jsonify({"code":200,"msg": str(e),"data":None}), 500
+        print(f"上传文件时出错: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"code":500,"msg": str(e),"data":None}), 500
 
 @app.route('/getFile', methods=['GET'])
 def get_file():
@@ -117,12 +127,17 @@ def upload_save():
         uuid_v1 = uuid.uuid1()
         print(f"UUID v1: {uuid_v1}")
 
+        # 确保目录存在
+        video_dir = Path(BASE_DIR / "videoFile")
+        video_dir.mkdir(parents=True, exist_ok=True)
+
         # 构造文件名和路径
         final_filename = f"{uuid_v1}_{filename}"
-        filepath = Path(BASE_DIR / "videoFile" / f"{uuid_v1}_{filename}")
+        filepath = video_dir / final_filename
 
         # 保存文件
-        file.save(filepath)
+        file.save(str(filepath))
+        print(f"文件已保存到: {filepath}")
 
         with sqlite3.connect(Path(BASE_DIR / "db" / "database.db")) as conn:
             cursor = conn.cursor()
@@ -654,6 +669,18 @@ def run_async_function(type,id,status_queue):
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             loop.run_until_complete(get_ks_cookie(id,status_queue))
+            loop.close()
+        case '5':
+            # 哔哩哔哩
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(bilibili_cookie_gen(id, status_queue))
+            loop.close()
+        case '6':
+            # 百家号
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(baijiahao_cookie_gen(id, status_queue))
             loop.close()
 
 # SSE 流生成器函数

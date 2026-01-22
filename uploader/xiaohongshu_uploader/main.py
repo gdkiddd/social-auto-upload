@@ -176,10 +176,31 @@ class XiaoHongShuVideo(object):
             await page.keyboard.type(self.title)
             await page.keyboard.press("Enter")
         css_selector = ".ql-editor" # 不能加上 .ql-blank 属性，这样只能获取第一次非空状态
-        for index, tag in enumerate(self.tags, start=1):
-            await page.type(css_selector, "#" + tag)
-            await page.press(css_selector, "Space")
-        xiaohongshu_logger.info(f'总共添加{len(self.tags)}个话题')
+        # 等待话题输入框准备就绪
+        try:
+            await page.wait_for_selector(css_selector, timeout=10000)
+            xiaohongshu_logger.info("  [-] 话题输入框已就绪")
+        except:
+            xiaohongshu_logger.warning("  [-] 未找到话题输入框，跳过标签添加")
+            css_selector = None
+
+        if css_selector:
+            for index, tag in enumerate(self.tags, start=1):
+                try:
+                    # 点击输入框确保焦点
+                    await page.click(css_selector, timeout=5000)
+                    await asyncio.sleep(0.5)
+                    # 输入标签
+                    await page.type(css_selector, "#" + tag)
+                    await asyncio.sleep(0.3)
+                    # 按空格确认标签
+                    await page.keyboard.press("Space")
+                    xiaohongshu_logger.info(f"  [-] 已添加标签 #{tag}")
+                    await asyncio.sleep(0.5)
+                except Exception as e:
+                    xiaohongshu_logger.warning(f"  [-] 添加标签 #{tag} 失败: {str(e)}")
+                    continue
+            xiaohongshu_logger.info(f'总共添加{len(self.tags)}个话题')
 
         # while True:
         #     # 判断重新上传按钮是否存在，如果不存在，代表视频正在上传，则等待
@@ -238,10 +259,11 @@ class XiaoHongShuVideo(object):
 
         await context.storage_state(path=self.account_file)  # 保存cookie
         xiaohongshu_logger.success('  [-]cookie更新完毕！')
-        await asyncio.sleep(2)  # 这里延迟是为了方便眼睛直观的观看
-        # 关闭浏览器上下文和浏览器实例
-        await context.close()
-        await browser.close()
+        xiaohongshu_logger.success('  [-]视频已成功发布，浏览器窗口将保持打开状态，请手动关闭')
+        await asyncio.sleep(3600)  # 保持浏览器打开 1 小时，方便手动操作
+        # 注释掉关闭代码，让浏览器保持打开
+        # await context.close()
+        # await browser.close()
     
     async def set_thumbnail(self, page: Page, thumbnail_path: str):
         if thumbnail_path:

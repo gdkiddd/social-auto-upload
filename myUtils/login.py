@@ -301,5 +301,53 @@ async def xiaohongshu_cookie_gen(id,status_queue):
             print("✅ 用户状态已记录")
         status_queue.put("200")
 
+# 哔哩哔哩登录（使用 biliup 插件，不需要浏览器）
+async def bilibili_cookie_gen(id, status_queue):
+    """
+    哔哩哔哩登录 - 使用命令行工具获取 cookie
+    由于哔哩哔哩使用 biliup 插件，不支持 Web 端二维码登录
+    需要用户使用 CLI 方式获取 cookie
+    """
+    from pathlib import Path
+    from conf import BASE_DIR
+
+    # 哔哩哔哩暂不支持 Web 端登录
+    # 用户需要使用 CLI 方式：
+    # python examples/get_bilibili_cookie_simple.py
+    print("❌ 哔哩哔哩暂不支持 Web 端登录")
+    print(f"请使用命令行方式获取 cookie：")
+    print(f"  python examples/get_bilibili_cookie_simple.py")
+    status_queue.put("500")
+
+# 百家号登录
+async def baijiahao_cookie_gen(id, status_queue):
+    """
+    百家号登录 - 使用 playwright 自动化
+    """
+    from pathlib import Path
+    from conf import BASE_DIR
+    from uploader.baijiahao_uploader.main import baijiahao_cookie_gen
+
+    url_changed_event = asyncio.Event()
+
+    async def on_url_change():
+        if page.url != original_url:
+            url_changed_event.set()
+
+    try:
+        # 调用 uploader 中的 cookie 生成函数
+        # 但需要修改为返回 cookie 文件路径
+        account_file = Path(BASE_DIR / "cookiesFile" / f"{uuid.uuid1()}.json")
+
+        # 注意：这里需要手动实现，因为 baijiahao_cookie_gen 使用的是 page.pause()
+        # 暂时返回错误提示
+        print("❌ 百家号暂不支持 Web 端登录")
+        print(f"请使用命令行方式获取 cookie：")
+        print(f"  python examples/get_baijiahao_cookie.py")
+        status_queue.put("500")
+    except Exception as e:
+        print(f"百家号登录失败: {e}")
+        status_queue.put("500")
+
 # a = asyncio.run(xiaohongshu_cookie_gen(4,None))
 # print(a)

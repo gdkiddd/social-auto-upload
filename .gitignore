@@ -169,10 +169,14 @@ bilibili_uploader/*.json
 tk_uploader/*.json
 
 # 配置文件
-conf.py
+# conf.py 已包含配置加载功能，需要提交到版本控制
+# 用户可复制 conf.example.py 创建自定义配置
 
 # 账号文件
 cookies
+
+# 浏览器持久化数据
+browser_data
 
 # Frontend
 .vite/
@@ -187,4 +191,5 @@ db/database.db
 cookiesFile
 uploadFile
 videoFile
+videos
 
