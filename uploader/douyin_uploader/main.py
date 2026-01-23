@@ -418,7 +418,8 @@ class DouYinVideo(object):
             douyin_logger.info("  [-] 等待设置横封面按钮出现...")
             await asyncio.sleep(2)  # 等待上传完成后按钮出现
 
-            horizontal_cover_button = page.locator('div:has-text("设置横封面")')
+            # 使用精确的按钮选择器
+            horizontal_cover_button = page.locator('button.semi-button-primary:has(span.semi-button-content:has-text("设置横封面"))')
 
             # 尝试多次点击"设置横封面"
             horizontal_clicked = False
