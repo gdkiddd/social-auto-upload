@@ -20,6 +20,15 @@ os.chdir(SCRIPT_DIR)
 
 # 现在导入模块（需要先切换目录）
 from conf import load_config, save_config, is_platform_enabled
+from myUtils.account_manager import (
+    get_accounts, add_account, delete_account,
+    get_current_account, set_current_account,
+    get_account_cookie_path, check_account_cookie_exists,
+    ensure_default_account, migrate_old_cookies
+)
+
+# 确保默认账号存在
+ensure_default_account()
 
 
 # 平台配置（按顺序）
@@ -75,13 +84,24 @@ PLATFORMS = [
 ]
 
 
-def check_cookie_exists(cookie_file):
-    """检查 cookie 文件是否存在"""
-    # 使用绝对路径
-    if not Path(cookie_file).is_absolute():
-        cookie_path = SCRIPT_DIR / cookie_file
+def check_cookie_exists(cookie_file_or_platform_id):
+    """
+    检查 cookie 文件是否存在
+
+    Args:
+        cookie_file_or_platform_id: cookie文件路径 或 平台ID
+    """
+    # 如果传入的是平台ID，使用当前账号的cookie路径
+    if isinstance(cookie_file_or_platform_id, str) and not cookie_file_or_platform_id.endswith('.json'):
+        platform_id = cookie_file_or_platform_id
+        current_account = get_current_account()
+        return check_account_cookie_exists(current_account, platform_id)
+
+    # 兼容旧的路径方式
+    if not Path(cookie_file_or_platform_id).is_absolute():
+        cookie_path = SCRIPT_DIR / cookie_file_or_platform_id
     else:
-        cookie_path = Path(cookie_file)
+        cookie_path = Path(cookie_file_or_platform_id)
     return cookie_path.exists()
 
 
@@ -186,6 +206,96 @@ def show_video_info():
     print("=" * 60)
 
 
+def show_account_menu():
+    """显示账号选择菜单"""
+    while True:
+        print("\n" + "=" * 60)
+        print("👤 账号选择")
+        print("=" * 60)
+
+        current_account = get_current_account()
+        accounts = get_accounts()
+
+        print(f"当前账号: {current_account}")
+        print()
+
+        # 显示账号列表
+        if accounts:
+            for i, account in enumerate(accounts, 1):
+                current_mark = " ✅ (当前)" if account == current_account else ""
+                print(f"  [{i}] {account}{current_mark}")
+
+        # 操作选项
+        start_idx = len(accounts) + 1
+        add_idx = start_idx
+        delete_idx = start_idx + 1
+        continue_idx = start_idx + 2
+        migrate_idx = start_idx + 3
+
+        print()
+        print(f"  [{add_idx}] 添加新账号")
+        if len(accounts) > 1:
+            print(f"  [{delete_idx}] 删除账号")
+        print(f"  [{migrate_idx}] 迁移旧Cookie")
+        print()
+        print(f"  [{continue_idx}] 继续")
+        print("  [0] 退出")
+        print("=" * 60)
+
+        choice = input("\n请输入选项: ").strip()
+
+        if choice == '0':
+            print("\n👋 再见！")
+            sys.exit(0)
+
+        elif choice == str(continue_idx):
+            # 继续到平台选择
+            break
+
+        elif choice == str(add_idx):
+            # 添加新账号
+            print("\n" + "-" * 40)
+            account_name = input("请输入新账号名称: ").strip()
+            if account_name:
+                add_account(account_name)
+            else:
+                print("❌ 账号名称不能为空")
+
+        elif choice == str(delete_idx) and len(accounts) > 1:
+            # 删除账号
+            print("\n" + "-" * 40)
+            print(f"已有账号: {', '.join(accounts)}")
+            account_name = input("请输入要删除的账号名称: ").strip()
+
+            if account_name in accounts:
+                if account_name == current_account:
+                    print(f"⚠️  不能删除当前账号")
+                else:
+                    confirm = input(f"确认删除账号 '{account_name}'？[y/N]: ").strip().lower()
+                    if confirm == 'y' or confirm == 'yes':
+                        delete_account(account_name)
+            else:
+                print(f"❌ 账号 '{account_name}' 不存在")
+
+        elif choice == str(migrate_idx):
+            # 迁移旧Cookie
+            migrate_old_cookies()
+
+        elif choice.isdigit():
+            # 选择账号
+            idx = int(choice)
+            if 1 <= idx <= len(accounts):
+                selected_account = accounts[idx - 1]
+                if selected_account != current_account:
+                    set_current_account(selected_account)
+                else:
+                    print(f"✅ 当前已经是账号 '{selected_account}'")
+            else:
+                print("\n❌ 无效的选项")
+        else:
+            print("\n❌ 无效的选项")
+
+
 def show_menu():
     """显示菜单"""
     # 先重命名文件
@@ -197,6 +307,12 @@ def show_menu():
     print("\n" + "=" * 60)
     print("🚀 社交媒体自动发布工具")
     print("=" * 60)
+
+    # 显示当前账号
+    current_account = get_current_account()
+    print(f"当前账号: {current_account}")
+
+    print()
     print("请选择操作：")
     print()
 
@@ -205,11 +321,15 @@ def show_menu():
 
     # 选项2-N：执行单个平台
     for i, platform in enumerate(PLATFORMS, start=2):
-        status = "✅" if check_cookie_exists(platform['cookie_file']) else "❌"
+        status = "✅" if check_cookie_exists(platform['id']) else "❌"
         print(f"  [{i}] {platform['name']}\t{status}")
 
+    # 账号管理选项
+    account_option = len(PLATFORMS) + 2
+    print(f"  [{account_option}] 切换账号")
+
     # 最后一个选项：设置定时时间
-    last_option = len(PLATFORMS) + 2
+    last_option = len(PLATFORMS) + 3
     print(f"  [{last_option}] 设置定时发布时间")
     print()
     print("  [0] 退出")
@@ -650,6 +770,9 @@ def print_final_results(results):
 
 def main():
     """主函数"""
+    # 首先显示账号选择菜单
+    show_account_menu()
+
     while True:
         show_menu()
 
@@ -673,6 +796,10 @@ def main():
             run_single_platform(platform, schedule_time)
 
         elif choice == str(len(PLATFORMS) + 2):
+            # 切换账号
+            show_account_menu()
+
+        elif choice == str(len(PLATFORMS) + 3):
             # 设置定时时间
             set_schedule_time()
 

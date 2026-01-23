@@ -11,6 +11,7 @@ from pathlib import Path
 
 from uploader.bilibili_uploader.main import read_cookie_json_file, extract_keys_from_json, random_emoji, BilibiliUploader
 from conf import BASE_DIR
+from myUtils.account_manager import get_current_account, get_account_cookie_path
 from utils.constant import VideoZoneTypes
 from utils.files_times import generate_schedule_time_next_day
 
@@ -93,7 +94,8 @@ if __name__ == '__main__':
     config = load_config()
 
     filepath = Path(BASE_DIR) / "videos"
-    account_file = Path(BASE_DIR / "cookies" / "bilibili_uploader" / "account.json")
+    current_account = get_current_account()
+    account_file = get_account_cookie_path(current_account, 'bilibili')
 
     if not account_file.exists():
         print(f"❌ {account_file.name} 配置文件不存在")

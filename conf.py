@@ -154,3 +154,31 @@ def save_config(config=None):
     except Exception as e:
         print(f"⚠️  保存配置文件失败: {e}")
         return False
+
+
+# ==================== 账号管理便捷函数 ====================
+
+def get_current_account():
+    """获取当前账号"""
+    from myUtils.account_manager import get_current_account as _get_current_account
+    return _get_current_account()
+
+
+def get_accounts():
+    """获取账号列表"""
+    from myUtils.account_manager import get_accounts as _get_accounts
+    return _get_accounts()
+
+
+def get_cookie_path(platform_id):
+    """
+    获取当前账号的cookie文件路径
+
+    Args:
+        platform_id: 平台ID (如 'xiaohongshu', 'douyin' 等)
+
+    Returns:
+        cookie文件路径
+    """
+    from myUtils.account_manager import get_cookie_path_for_current_account
+    return get_cookie_path_for_current_account(platform_id)

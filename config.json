@@ -28,5 +28,10 @@
     "bilibili": {
       "enabled": true
     }
-  }
+  },
+  "current_account": "Amy",
+  "accounts": [
+    "KIDDD",
+    "Amy"
+  ]
 }
