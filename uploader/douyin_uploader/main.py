@@ -8,11 +8,16 @@ import asyncio
 from conf import LOCAL_CHROME_PATH, LOCAL_CHROME_HEADLESS
 from utils.base_social_media import set_init_script
 from utils.log import douyin_logger
+from myUtils.publish_history import get_publish_history
+from myUtils.account_manager import get_current_account
+from pathlib import Path
 
 
 async def cookie_auth(account_file):
     async with async_playwright() as playwright:
-        browser = await playwright.chromium.launch(headless=LOCAL_CHROME_HEADLESS)
+        browser = await playwright.chromium.launch(
+            headless=LOCAL_CHROME_HEADLESS
+        )
         context = await browser.new_context(storage_state=account_file)
         context = await set_init_script(context)
         # 创建一个新的页面
@@ -48,10 +53,12 @@ async def douyin_setup(account_file, handle=False):
 async def douyin_cookie_gen(account_file):
     async with async_playwright() as playwright:
         options = {
-            'headless': LOCAL_CHROME_HEADLESS
+            'headless': LOCAL_CHROME_HEADLESS,
         }
         # Make sure to run headed.
-        browser = await playwright.chromium.launch(**options)
+        browser = await playwright.chromium.launch(
+            **options
+        )
         # Setup context however you like.
         context = await browser.new_context()  # Pass any options
         context = await set_init_script(context)
@@ -99,12 +106,23 @@ class DouYinVideo(object):
 
     async def upload(self, playwright: Playwright) -> None:
         # 使用 Chromium 浏览器启动一个浏览器实例
+
+        # 准备浏览器启动选项
+        launch_options = {
+            'headless': self.headless,
+        }
+
         if self.local_executable_path:
-            browser = await playwright.chromium.launch(headless=self.headless, executable_path=self.local_executable_path)
-        else:
-            browser = await playwright.chromium.launch(headless=self.headless)
+            launch_options['executable_path'] = self.local_executable_path
+
+        browser = await playwright.chromium.launch(
+            **launch_options
+        )
         # 创建一个浏览器上下文，使用指定的 cookie 文件
-        context = await browser.new_context(storage_state=f"{self.account_file}")
+        context = await browser.new_context(
+            viewport={"width": 1250, "height": 1250},
+            storage_state=f"{self.account_file}"
+        )
         context = await set_init_script(context)
 
         # 创建一个新的页面
@@ -146,19 +164,35 @@ class DouYinVideo(object):
         title_container = page.get_by_text('作品标题').locator("..").locator("xpath=following-sibling::div[1]").locator("input")
         if await title_container.count():
             await title_container.fill(self.title[:30])
+            await asyncio.sleep(1)
         else:
             titlecontainer = page.locator(".notranslate")
             await titlecontainer.click()
+            await asyncio.sleep(1)
             await page.keyboard.press("Backspace")
             await page.keyboard.press("Control+KeyA")
             await page.keyboard.press("Delete")
             await page.keyboard.type(self.title)
+            await asyncio.sleep(1)
             await page.keyboard.press("Enter")
+            await asyncio.sleep(1)
         css_selector = ".zone-container"
         for index, tag in enumerate(self.tags, start=1):
             await page.type(css_selector, "#" + tag)
             await page.press(css_selector, "Space")
+            await asyncio.sleep(1)
         douyin_logger.info(f'总共添加{len(self.tags)}个话题')
+
+        # 检查是否有"我知道了"按钮，如果有则点击
+        try:
+            i_know_button = page.locator('button:has-text("我知道了"), span:has-text("我知道了")')
+            if await i_know_button.count() > 0:
+                await i_know_button.first.click()
+                douyin_logger.info("  [-] 已点击'我知道了'按钮")
+                await asyncio.sleep(1)
+        except:
+            pass
+
         while True:
             # 判断重新上传按钮是否存在，如果不存在，代表视频正在上传，则等待
             try:
@@ -181,14 +215,16 @@ class DouYinVideo(object):
         if self.productLink and self.productTitle:
             douyin_logger.info(f'  [-] 正在设置商品链接...')
             await self.set_product_link(page, self.productLink, self.productTitle)
+            await asyncio.sleep(1)
             douyin_logger.info(f'  [+] 完成设置商品链接...')
-        
-        #上传视频封面
-        await self.set_thumbnail(page, self.thumbnail_path)
+
+        # 上传视频封面
+        await self.set_thumbnail(page)
+        await asyncio.sleep(1)
 
         # 更换可见元素
         await self.set_location(page, "")
-
+        await asyncio.sleep(1)
 
         # 頭條/西瓜
         third_part_element = '[class^="info"] > [class^="first-part"] div div.semi-switch'
@@ -197,9 +233,11 @@ class DouYinVideo(object):
             # 检测是否是已选中状态
             if 'semi-switch-checked' not in await page.eval_on_selector(third_part_element, 'div => div.className'):
                 await page.locator(third_part_element).locator('input.semi-switch-native-control').click()
+                await asyncio.sleep(1)
 
         if self.publish_date != 0:
             await self.set_schedule_time_douyin(page, self.publish_date)
+            await asyncio.sleep(1)
 
         # 判断视频是否发布成功
         while True:
@@ -211,6 +249,15 @@ class DouYinVideo(object):
                 await page.wait_for_url("https://creator.douyin.com/creator-micro/content/manage**",
                                         timeout=3000)  # 如果自动跳转到作品页面，则代表发布成功
                 douyin_logger.success("  [-]视频发布成功")
+                # 记录发布历史
+                publish_history = get_publish_history()
+                publish_history.add_record(
+                    platform_id='douyin',
+                    platform_name='抖音',
+                    video_file=Path(self.file_path).name,
+                    status='success',
+                    account=get_current_account()
+                )
                 break
             except:
                 # 尝试处理封面问题
@@ -263,24 +310,174 @@ class DouYinVideo(object):
 
         return False
 
-    async def set_thumbnail(self, page: Page, thumbnail_path: str):
-        if thumbnail_path:
-            douyin_logger.info('  [-] 正在设置视频封面...')
-            await page.click('text="选择封面"')
-            await page.wait_for_selector("div.dy-creator-content-modal")
-            await page.click('text="设置竖封面"')
-            await page.wait_for_timeout(2000)  # 等待2秒
-            # 定位到上传区域并点击
-            await page.locator("div[class^='semi-upload upload'] >> input.semi-upload-hidden-input").set_input_files(thumbnail_path)
-            await page.wait_for_timeout(2000)  # 等待2秒
-            await page.locator("div#tooltip-container button:visible:has-text('完成')").click()
-            # finish_confirm_element = page.locator("div[class^='confirmBtn'] >> div:has-text('完成')")
-            # if await finish_confirm_element.count():
-            #     await finish_confirm_element.click()
-            # await page.locator("div[class^='footer'] button:has-text('完成')").click()
-            douyin_logger.info('  [+] 视频封面设置完成！')
-            # 等待封面设置对话框关闭
-            await page.wait_for_selector("div.extractFooter", state='detached')
+    async def set_thumbnail(self, page: Page):
+        """设置视频封面"""
+        douyin_logger.info('  [-] 正在设置视频封面...')
+
+        try:
+            # 查找封面图片
+            video_file = Path(self.file_path)
+            cover_extensions = ['.png', '.PNG', '.jpg', '.jpeg', '.JPG', '.JPEG']
+            cover_file = None
+
+            for ext in cover_extensions:
+                potential_cover = video_file.with_suffix(ext)
+                if potential_cover.exists():
+                    cover_file = potential_cover
+                    break
+
+            if not cover_file:
+                # 如果找不到同名的封面图，尝试查找 videos 目录下的第一个图片
+                videos_dir = Path("videos")
+                if videos_dir.exists():
+                    image_patterns = ['*.png', '*.PNG', '*.jpg', '*.jpeg', '*.JPG', '*.JPEG']
+                    for pattern in image_patterns:
+                        images = list(videos_dir.glob(pattern))
+                        if images:
+                            cover_file = images[0]
+                            break
+
+            if not cover_file:
+                douyin_logger.info("  [-] 未找到封面图片，跳过封面设置")
+                return
+
+            douyin_logger.info(f"  [-] 找到封面图片: {cover_file.name}")
+
+            # 1. 点击第一个"选择封面"
+            select_cover_button = page.locator('div[class*="cover-"]').first
+            if await select_cover_button.count() == 0:
+                douyin_logger.info("  [-] 未找到选择封面按钮，跳过封面设置")
+                return
+
+            await select_cover_button.click()
+            douyin_logger.info("  [-] 已点击选择封面")
+            await asyncio.sleep(2)
+
+            # 2. 尝试多次点击"上传封面"按钮并上传文件
+            max_retries = 3
+            upload_success = False
+
+            for retry in range(max_retries):
+                try:
+                    # 使用更精确的选择器：直接定位包含"上传封面"的外层容器
+                    # 方式1：定位包含两个class的容器div
+                    upload_container = page.locator('div.upload-ZOJTUA.container-XzaV9h')
+
+                    if await upload_container.count() == 0:
+                        # class名可能变化，尝试使用更通用的选择器
+                        # 方式2：定位包含"上传封面"文字且包含 semi-upload 的容器
+                        upload_container = page.locator('div:has(div.text-zsBQsb:has-text("上传封面")) >> div.semi-upload')
+
+                    if await upload_container.count() == 0:
+                        # 方式3：直接定位包含"上传封面"和semi-upload的父div
+                        upload_container = page.locator('div:has(> div > div.text-zsBQsb:has-text("上传封面")) > div.semi-upload')
+
+                    if await upload_container.count() == 0:
+                        douyin_logger.warning(f"  [-] 第{retry + 1}次尝试：未找到上传封面容器")
+                        if retry < max_retries - 1:
+                            await asyncio.sleep(1)
+                            continue
+                        else:
+                            douyin_logger.error("  [-] 未找到上传封面容器，封面设置失败")
+                            return
+
+                    # 使用 file chooser API
+                    try:
+                        async with page.expect_file_chooser() as fc_info:
+                            await upload_container.first.click()
+
+                        file_chooser = await fc_info.value
+                        await file_chooser.set_files(str(cover_file))
+                        douyin_logger.success(f"  [-] 封面图片已选择: {cover_file.name}")
+                        upload_success = True
+                        await asyncio.sleep(2)
+                        break
+
+                    except Exception as e:
+                        douyin_logger.warning(f"  [-] 第{retry + 1}次上传失败: {e}")
+                        if retry < max_retries - 1:
+                            await asyncio.sleep(1)
+                            continue
+                        else:
+                            raise
+
+                except Exception as e:
+                    douyin_logger.warning(f"  [-] 第{retry + 1}次尝试出错: {e}")
+                    if retry < max_retries - 1:
+                        await asyncio.sleep(1)
+                        continue
+                    else:
+                        raise
+
+            # 如果封面上传失败，直接返回
+            if not upload_success:
+                douyin_logger.error("  ❌ 封面上传失败，跳过后续步骤")
+                return
+
+            # 3. 等待并点击"设置横封面"
+            douyin_logger.info("  [-] 等待设置横封面按钮出现...")
+            await asyncio.sleep(2)  # 等待上传完成后按钮出现
+
+            horizontal_cover_button = page.locator('div:has-text("设置横封面")')
+
+            # 尝试多次点击"设置横封面"
+            horizontal_clicked = False
+            for attempt in range(3):
+                if await horizontal_cover_button.count() > 0:
+                    try:
+                        await horizontal_cover_button.first.click()
+                        douyin_logger.info("  [-] 已点击设置横封面")
+                        horizontal_clicked = True
+                        await asyncio.sleep(2)
+                        break
+                    except Exception as e:
+                        douyin_logger.warning(f"  [-] 第{attempt + 1}次点击设置横封面失败: {e}")
+                        await asyncio.sleep(1)
+                else:
+                    douyin_logger.info(f"  [-] 第{attempt + 1}次尝试：未找到设置横封面按钮")
+                    await asyncio.sleep(1)
+
+            if not horizontal_clicked:
+                douyin_logger.warning("  [-] 未找到或未能点击设置横封面按钮，继续...")
+
+            # 4. 等待并点击"完成"
+            douyin_logger.info("  [-] 等待完成按钮出现...")
+            await asyncio.sleep(1)
+
+            # 使用多种选择器查找"完成"按钮
+            finish_button = page.locator('button:has-text("完成")')
+
+            if await finish_button.count() == 0:
+                finish_button = page.locator('div.semi-button:has-text("完成")')
+
+            if await finish_button.count() == 0:
+                finish_button = page.locator('span:has-text("完成")')
+
+            # 尝试多次点击"完成"
+            finish_clicked = False
+            for attempt in range(3):
+                if await finish_button.count() > 0:
+                    try:
+                        await finish_button.first.click()
+                        douyin_logger.success("  [-] 封面设置完成")
+                        finish_clicked = True
+                        await asyncio.sleep(1)
+                        break
+                    except Exception as e:
+                        douyin_logger.warning(f"  [-] 第{attempt + 1}次点击完成失败: {e}")
+                        await asyncio.sleep(1)
+                else:
+                    douyin_logger.info(f"  [-] 第{attempt + 1}次尝试：未找到完成按钮")
+                    await asyncio.sleep(1)
+
+            if not finish_clicked:
+                douyin_logger.warning("  [-] 未找到或未能点击完成按钮")
+
+        except Exception as e:
+            douyin_logger.error(f"  ❌ 封面设置失败: {str(e)}")
+            import traceback
+            douyin_logger.error(traceback.format_exc())
+            # 封面设置失败不影响视频发布
             
 
     async def set_location(self, page: Page, location: str = ""):

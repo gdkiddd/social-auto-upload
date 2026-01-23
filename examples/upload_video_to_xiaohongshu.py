@@ -8,15 +8,32 @@ from utils.files_times import generate_schedule_time_next_day, get_title_and_has
 
 
 if __name__ == '__main__':
+    from conf import load_config
+
     filepath = Path(BASE_DIR) / "videos"
     current_account = get_current_account()
     account_file = get_account_cookie_path(current_account, 'xiaohongshu')
+
+    # 读取配置
+    config = load_config()
+    schedule_time = config.get('schedule_time', None)
+
+    if schedule_time:
+        print(f"⏰ 定时发布模式: {schedule_time}")
+        # 定时发布
+        from datetime import datetime
+        schedule_dt = datetime.strptime(schedule_time, '%Y-%m-%d %H:%M')
+        publish_datetimes = [schedule_dt]  # 所有视频使用同一时间
+    else:
+        print("⏰ 立即发布模式")
+        publish_datetimes = [0]  # 0 表示立即发布
+
     # 获取视频目录
     folder_path = Path(filepath)
     # 获取文件夹中的所有文件
     files = list(folder_path.glob("*.mp4"))
     file_num = len(files)
-    publish_datetimes = generate_schedule_time_next_day(file_num, 1, daily_times=[16])
+
     cookie_setup = asyncio.run(xiaohongshu_setup(account_file, handle=False))
     for index, file in enumerate(files):
         title, tags = get_title_and_hashtags(str(file))
@@ -29,5 +46,5 @@ if __name__ == '__main__':
         # if thumbnail_path.exists():
             # app = XiaoHongShuVideo(title, file, tags, publish_datetimes[index], account_file, thumbnail_path=thumbnail_path)
         # else:
-        app = XiaoHongShuVideo(title, file, tags, 0, account_file)
+        app = XiaoHongShuVideo(title, file, tags, publish_datetimes[index], account_file)
         asyncio.run(app.main(), debug=False)

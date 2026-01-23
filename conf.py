@@ -41,6 +41,7 @@ def load_config():
         "keep_browser_duration": 3600,
         "bilibili_tid": 36,
         "bilibili_schedule": False,
+        "step_delay": 3,  # 步骤之间的延迟时间（秒），用于避免触发风控
         "platforms": {
             "xiaohongshu": {"enabled": True, "keep_browser_open": True},
             "douyin": {"enabled": True, "keep_browser_open": True},
@@ -112,8 +113,10 @@ def reload_config():
 
 
 def is_platform_enabled(platform):
-    """检查平台是否启用"""
-    return get_config(f'platforms.{platform}.enabled', True)
+    """检查平台是否启用（使用当前账号的配置）"""
+    from myUtils.account_manager import is_platform_enabled_for_account, get_current_account
+    current_account = get_current_account()
+    return is_platform_enabled_for_account(current_account, platform)
 
 
 def should_keep_browser_open(platform):
@@ -130,6 +133,11 @@ def should_keep_browser_open(platform):
 def get_keep_browser_duration():
     """获取保持浏览器打开的时长（秒）"""
     return get_config('keep_browser_duration', 3600)
+
+
+def get_step_delay():
+    """获取步骤之间的延迟时间（秒），用于避免触发风控"""
+    return get_config('step_delay', 3)
 
 
 def save_config(config=None):
@@ -182,3 +190,20 @@ def get_cookie_path(platform_id):
     """
     from myUtils.account_manager import get_cookie_path_for_current_account
     return get_cookie_path_for_current_account(platform_id)
+
+
+def get_chrome_user_data_dir(platform_id):
+    """
+    获取Chrome用户数据目录路径（用于永久保存浏览器数据）
+
+    Args:
+        platform_id: 平台ID (如 'xiaohongshu', 'douyin' 等)
+
+    Returns:
+        用户数据目录路径
+    """
+    from myUtils.account_manager import get_current_account
+    current_account = get_current_account()
+    user_data_dir = BASE_DIR / "data" / "chrome_user_data" / platform_id / current_account
+    user_data_dir.mkdir(parents=True, exist_ok=True)
+    return str(user_data_dir)

@@ -135,6 +135,9 @@ if __name__ == '__main__':
     print("=" * 60)
     print()
 
+    success_count = 0
+    failed_count = 0
+
     for index, file in enumerate(files):
         # 读取视频信息
         title, tags, desc = get_video_info(file)
@@ -142,12 +145,15 @@ if __name__ == '__main__':
         # 添加随机 emoji 避免标题重复
         title_with_emoji = title + random_emoji()
 
-        # 打印视频信息
+        print(f"\n{'=' * 60}")
         print(f"📹 视频 {index + 1}/{file_num}")
+        print(f"{'=' * 60}")
         print(f"   文件: {file.name}")
+        print(f"   大小: {file.stat().st_size / (1024*1024):.1f} MB")
         print(f"   标题: {title_with_emoji}")
         print(f"   标签: {', '.join(tags) if tags else '无'}")
         print(f"   描述: {desc[:50]}..." if len(desc) > 50 else f"   描述: {desc}")
+        print(f"{'=' * 60}")
         print()
 
         # 创建上传实例并上传
@@ -161,11 +167,22 @@ if __name__ == '__main__':
             dtime=timestamps[index]
         )
 
+        upload_success = False
         try:
-            bili_uploader.upload()
-            print(f"✅ {file.name} 上传成功")
+            upload_success = bili_uploader.upload()
+            if not upload_success:
+                print(f"❌ {file.name} 上传失败，请查看上方错误信息")
+                failed_count += 1
+                # 即使失败也继续下一个视频
+            else:
+                print(f"✅ {file.name} 上传成功")
+                success_count += 1
         except Exception as e:
-            print(f"❌ {file.name} 上传失败: {str(e)}")
+            print(f"❌ {file.name} 上传异常: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            failed_count += 1
+            # 即使失败也继续下一个视频
 
         print()
 
@@ -175,5 +192,19 @@ if __name__ == '__main__':
             time.sleep(30)
 
     print("=" * 60)
-    print("✅ 所有视频上传完成！")
+    print("📊 上传统计")
+    print("=" * 60)
+    print(f"成功: {success_count} 个")
+    print(f"失败: {failed_count} 个")
+    print(f"总计: {file_num} 个")
+    print("=" * 60)
     print(f"注: Bilibili 使用 API 方式上传，没有浏览器窗口")
+    print()
+    print("🔗 查看上传结果: https://member.bilibili.com/platform/upload-manager/article")
+    print("=" * 60)
+
+    # 根据结果返回不同的退出码
+    if failed_count > 0:
+        exit(1)  # 有失败则返回退出码 1
+    else:
+        exit(0)  # 全部成功则返回退出码 0

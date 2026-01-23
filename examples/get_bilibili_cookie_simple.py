@@ -43,22 +43,13 @@ async def bilibili_simple_login(account_file):
             await page.goto('https://passport.bilibili.com/login')
 
             bilibili_logger.info('[+] 浏览器已打开，请扫码登录')
-            bilibili_logger.info('[+] 登录成功后，按 Ctrl+C 或关闭窗口继续...')
+            bilibili_logger.info('[+] 登录成功后，点击 Inspector 窗口的"继续"按钮')
 
-            # 等待用户手动登录 - 等待跳转到个人主页或等待特定时间
-            try:
-                # 等待 URL 变化（登录成功后会跳转）
-                await page.wait_for_url(
-                    ['https://www.bilibili.com/*', 'https://space.bilibili.com/*'],
-                    timeout=120000  # 等待 2 分钟
-                )
-                bilibili_logger.success('[+] 检测到登录成功！')
-            except:
-                # 如果没有跳转，给用户 30 秒时间手动登录
-                bilibili_logger.info('[+] 请在 30 秒内完成扫码登录...')
-                await asyncio.sleep(30)
+            # 暂停并打开 Playwright Inspector，用户登录后点击"继续"
+            await page.pause()
 
-            # 保存 cookie
+            # 保存 cookie（先创建目录）
+            account_file.parent.mkdir(parents=True, exist_ok=True)
             await context.storage_state(path=account_file)
             bilibili_logger.success(f'[+] Cookie 已保存到: {account_file}')
 
@@ -72,15 +63,22 @@ async def bilibili_simple_login(account_file):
 
 
 if __name__ == '__main__':
-    account_file = Path(__file__).parent.parent / "cookies" / "bilibili_uploader" / "account.json"
+    from myUtils.account_manager import get_current_account, get_account_cookie_path
 
-    print('Bilibili 简易登录 - macOS 版本')
+    # 获取当前账号的 cookie 路径
+    current_account = get_current_account()
+    account_file = get_account_cookie_path(current_account, 'bilibili')
+
+    print('Bilibili 登录')
+    print(f'当前账号: {current_account}')
     print(f'Cookie 保存路径: {account_file}')
     print('=' * 60)
-    print('说明：')
+    print('操作步骤：')
     print('1. 浏览器会自动打开 Bilibili 登录页面')
-    print('2. 使用手机 Bilibili APP 扫码登录')
-    print('3. 登录成功后，Cookie 会自动保存')
+    print('2. 同时会弹出 Playwright Inspector 窗口')
+    print('3. 使用手机 Bilibili APP 扫码登录')
+    print('4. 登录成功后，点击 Inspector 窗口的"继续"按钮（▶）')
+    print('5. Cookie 会自动保存')
     print('=' * 60)
 
     success = asyncio.run(bilibili_simple_login(account_file))

@@ -108,11 +108,11 @@ def delete_account(account_name: str) -> bool:
         config['current_account'] = accounts[0]
 
     if save_config(config):
-        # 删除账号目录（包含cookies）
+        # 删除账号目录（包含cookies和平台配置）
         account_dir = BASE_DIR / 'cookies' / account_name
         if account_dir.exists():
             shutil.rmtree(account_dir)
-            print(f"🗑️  已删除账号 '{account_name}' 的cookie文件")
+            print(f"🗑️  已删除账号 '{account_name}' 的所有数据（cookie、平台配置等）")
         print(f"✅ 账号 '{account_name}' 删除成功")
         return True
     else:
@@ -299,3 +299,160 @@ def ensure_default_account():
     # 创建KIDDD目录
     kiddd_dir = BASE_DIR / 'cookies' / 'KIDDD'
     kiddd_dir.mkdir(parents=True, exist_ok=True)
+
+    # 迁移全局平台配置到账号级别配置
+    migrate_global_platforms_config()
+
+
+def migrate_global_platforms_config():
+    """
+    迁移全局平台配置到账号级别配置
+    从 config.json 中的 platforms 字段迁移到每个账号的 platforms.json
+    """
+    config = load_config()
+
+    # 检查是否有全局平台配置需要迁移
+    if 'platforms' not in config or not config['platforms']:
+        return
+
+    global_platforms = config['platforms']
+    accounts = get_accounts()
+
+    migrated_count = 0
+
+    for account_name in accounts:
+        account_config_file = get_account_platforms_config_path(account_name)
+
+        # 如果账号配置文件已存在，跳过（保留用户已有的配置）
+        if account_config_file.exists():
+            continue
+
+        # 将全局配置复制到账号配置
+        if save_account_platforms_config(account_name, global_platforms):
+            migrated_count += 1
+            print(f"✅ 已迁移平台配置到账号: {account_name}")
+
+    if migrated_count > 0:
+        print(f"📊 已为 {migrated_count} 个账号创建独立的平台配置")
+
+        # 可选：询问是否删除全局配置
+        print()
+        print("💡 提示：全局平台配置已迁移到各账号，现在每个账号都有独立的平台开关配置")
+
+    # 清理全局平台配置（可选，这里保留不删除）
+    # if 'platforms' in config:
+    #     del config['platforms']
+    #     save_config(config)
+
+
+def get_account_platforms_config_path(account_name: str) -> Path:
+    """
+    获取账号的平台配置文件路径
+
+    Args:
+        account_name: 账号名称
+
+    Returns:
+        平台配置文件路径
+    """
+    account_dir = BASE_DIR / 'cookies' / account_name
+    account_dir.mkdir(parents=True, exist_ok=True)
+    return account_dir / 'platforms.json'
+
+
+def get_account_platforms_config(account_name: str) -> dict:
+    """
+    获取账号的平台配置
+
+    Args:
+        account_name: 账号名称
+
+    Returns:
+        平台配置字典
+    """
+    config_file = get_account_platforms_config_path(account_name)
+
+    if not config_file.exists():
+        # 返回默认配置（所有平台启用）
+        return {
+            'xiaohongshu': {'enabled': True},
+            'douyin': {'enabled': True},
+            'tencent': {'enabled': True},
+            'kuaishou': {'enabled': True},
+            'baijiahao': {'enabled': True},
+            'bilibili': {'enabled': True}
+        }
+
+    try:
+        with open(config_file, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except:
+        # 读取失败，返回默认配置
+        return {
+            'xiaohongshu': {'enabled': True},
+            'douyin': {'enabled': True},
+            'tencent': {'enabled': True},
+            'kuaishou': {'enabled': True},
+            'baijiahao': {'enabled': True},
+            'bilibili': {'enabled': True}
+        }
+
+
+def save_account_platforms_config(account_name: str, config: dict) -> bool:
+    """
+    保存账号的平台配置
+
+    Args:
+        account_name: 账号名称
+        config: 平台配置字典
+
+    Returns:
+        是否保存成功
+    """
+    config_file = get_account_platforms_config_path(account_name)
+
+    try:
+        with open(config_file, 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
+        return True
+    except Exception as e:
+        print(f"❌ 保存平台配置失败: {e}")
+        return False
+
+
+def is_platform_enabled_for_account(account_name: str, platform_id: str) -> bool:
+    """
+    检查账号的某个平台是否启用
+
+    Args:
+        account_name: 账号名称
+        platform_id: 平台ID
+
+    Returns:
+        是否启用
+    """
+    config = get_account_platforms_config(account_name)
+    platform_config = config.get(platform_id, {})
+    return platform_config.get('enabled', True)
+
+
+def set_platform_enabled_for_account(account_name: str, platform_id: str, enabled: bool) -> bool:
+    """
+    设置账号的某个平台启用状态
+
+    Args:
+        account_name: 账号名称
+        platform_id: 平台ID
+        enabled: 是否启用
+
+    Returns:
+        是否设置成功
+    """
+    config = get_account_platforms_config(account_name)
+
+    if platform_id not in config:
+        config[platform_id] = {}
+
+    config[platform_id]['enabled'] = enabled
+
+    return save_account_platforms_config(account_name, config)

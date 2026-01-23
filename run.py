@@ -19,13 +19,14 @@ SCRIPT_DIR = Path(__file__).parent.resolve()
 os.chdir(SCRIPT_DIR)
 
 # 现在导入模块（需要先切换目录）
-from conf import load_config, save_config, is_platform_enabled
+from conf import load_config, save_config, is_platform_enabled, reload_config
 from myUtils.account_manager import (
     get_accounts, add_account, delete_account,
     get_current_account, set_current_account,
     get_account_cookie_path, check_account_cookie_exists,
     ensure_default_account, migrate_old_cookies
 )
+from myUtils.publish_history import get_publish_history
 
 # 确保默认账号存在
 ensure_default_account()
@@ -36,7 +37,7 @@ PLATFORMS = [
     {
         'id': 'xiaohongshu',
         'name': '小红书',
-        'cookie_file': 'cookies/xiaohongshu_uploader/account.json',
+        'cookie_file': 'xiaohongshu',  # 使用平台ID，由 account_manager 处理路径
         'script': 'examples/upload_video_to_xiaohongshu.py',
         'login_script': 'examples/get_xiaohongshu_cookie.py',
         'has_browser': True
@@ -44,7 +45,7 @@ PLATFORMS = [
     {
         'id': 'tencent',
         'name': '视频号',
-        'cookie_file': 'cookies/tencent_uploader/account.json',
+        'cookie_file': 'tencent',
         'script': 'examples/upload_video_to_tencent.py',
         'login_script': 'examples/get_tencent_cookie.py',
         'has_browser': True
@@ -52,15 +53,15 @@ PLATFORMS = [
     {
         'id': 'bilibili',
         'name': 'Bilibili',
-        'cookie_file': 'cookies/bilibili_uploader/account.json',
+        'cookie_file': 'bilibili',
         'script': 'examples/upload_video_to_bilibili.py',
-        'login_script': None,
-        'has_browser': False
+        'login_script': 'examples/get_bilibili_cookie_simple.py',
+        'has_browser': True
     },
     {
         'id': 'douyin',
         'name': '抖音',
-        'cookie_file': 'cookies/douyin_uploader/account.json',
+        'cookie_file': 'douyin',
         'script': 'examples/upload_video_to_douyin.py',
         'login_script': 'examples/get_douyin_cookie.py',
         'has_browser': True
@@ -68,7 +69,7 @@ PLATFORMS = [
     {
         'id': 'kuaishou',
         'name': '快手',
-        'cookie_file': 'cookies/ks_uploader/account.json',
+        'cookie_file': 'kuaishou',
         'script': 'examples/upload_video_to_kuaishou.py',
         'login_script': 'examples/get_kuaishou_cookie.py',
         'has_browser': True
@@ -76,7 +77,7 @@ PLATFORMS = [
     {
         'id': 'baijiahao',
         'name': '百家号',
-        'cookie_file': 'cookies/baijiahao_uploader/account.json',
+        'cookie_file': 'baijiahao',
         'script': 'examples/upload_video_to_baijiahao.py',
         'login_script': 'examples/get_baijiahao_cookie.py',
         'has_browser': True
@@ -248,8 +249,8 @@ def show_account_menu():
             print("\n👋 再见！")
             sys.exit(0)
 
-        elif choice == str(continue_idx):
-            # 继续到平台选择
+        elif choice == '' or choice == str(continue_idx):
+            # 回车或输入继续选项，继续到平台选择
             break
 
         elif choice == str(add_idx):
@@ -296,6 +297,111 @@ def show_account_menu():
             print("\n❌ 无效的选项")
 
 
+def show_platform_settings(platform):
+    """显示平台设置菜单"""
+    platform_id = platform['id']
+    platform_name = platform['name']
+
+    while True:
+        print("\n" + "=" * 60)
+        print(f"⚙️  {platform_name} 设置")
+        print("=" * 60)
+
+        # 获取当前状态
+        has_cookie = check_cookie_exists(platform_id)
+        is_enabled = is_platform_enabled(platform_id)
+
+        print(f"Cookie 状态: {'✅ 已登录' if has_cookie else '❌ 未登录'}")
+        print(f"上传开关: {'✅ 已启用' if is_enabled else '❌ 已禁用'}")
+        print()
+        print("请选择操作：")
+        print("  [1] 立即上传")
+        print("  [2] 开启/关闭上传")
+        print("  [3] 重登录")
+        print()
+        print("  [0] 返回")
+        print("=" * 60)
+
+        choice = input("\n请输入选项: ").strip()
+
+        if choice == '0':
+            break
+
+        elif choice == '1':
+            # 立即上传到此平台
+            schedule_time = get_schedule_time_config()
+            run_single_platform(platform, schedule_time)
+
+        elif choice == '2':
+            # 切换上传开关（使用账号级别的配置）
+            from myUtils.account_manager import (
+                get_current_account,
+                is_platform_enabled_for_account,
+                set_platform_enabled_for_account
+            )
+
+            current_account = get_current_account()
+            current_status = is_platform_enabled_for_account(current_account, platform_id)
+
+            # 切换状态
+            new_status = not current_status
+
+            # 保存到账号级别的配置
+            if set_platform_enabled_for_account(current_account, platform_id, new_status):
+                print(f"\n✅ {platform_name} 上传开关已{'启用' if new_status else '禁用'}")
+                print(f"💡 配置已保存到账号: {current_account}")
+            else:
+                print(f"\n❌ 保存配置失败")
+
+        elif choice == '3':
+            # 登录/重新登录
+            login_script = platform.get('login_script')
+            if login_script and Path(login_script).exists():
+                print(f"\n正在打开 {platform_name} 登录页面...")
+                success = run_login(login_script)
+                if success:
+                    print(f"\n✅ {platform_name} 登录成功")
+                else:
+                    print(f"\n❌ {platform_name} 登录失败")
+            else:
+                print(f"\n❌ {platform_name} 没有配置登录脚本")
+
+        else:
+            print("\n❌ 无效的选项")
+
+
+def show_publish_history():
+    """显示发布历史记录"""
+    print("\n" + "=" * 60)
+    print("📊 发布历史记录")
+    print("=" * 60)
+
+    publish_history = get_publish_history()
+
+    print("\n选择查看方式：")
+    print("  [1] 查看各平台最新记录")
+    print("  [2] 查看所有记录（最近20条）")
+    print()
+    print("  [0] 返回")
+    print("=" * 60)
+
+    choice = input("\n请输入选项: ").strip()
+
+    if choice == '0':
+        return
+    elif choice == '1':
+        # 显示各平台最新记录
+        publish_history.display_latest_by_platform()
+    elif choice == '2':
+        # 显示所有记录
+        records = publish_history.get_latest_records(limit=20)
+        publish_history.display_records(records)
+    else:
+        print("\n❌ 无效的选项")
+
+    input("\n按回车键继续...")
+
+
 def show_menu():
     """显示菜单"""
     # 先重命名文件
@@ -319,20 +425,37 @@ def show_menu():
     # 选项1：执行所有
     print("  [1] 执行所有平台")
 
-    # 选项2-N：执行单个平台
+    # 选项2-N：平台设置
     for i, platform in enumerate(PLATFORMS, start=2):
-        status = "✅" if check_cookie_exists(platform['id']) else "❌"
-        print(f"  [{i}] {platform['name']}\t{status}")
+        has_cookie = check_cookie_exists(platform['id'])
+        is_enabled = is_platform_enabled(platform['id'])
+
+        # 状态图标：只在未登录时显示❌，已登录不显示图标
+        cookie_status = "" if has_cookie else "❌"
+        switch_status = "🔴" if not is_enabled else ""
+
+        print(f"  [{i}] {platform['name']}\t{cookie_status} {switch_status}")
 
     # 账号管理选项
     account_option = len(PLATFORMS) + 2
     print(f"  [{account_option}] 切换账号")
 
+    # 发布历史选项
+    history_option = len(PLATFORMS) + 3
+    print(f"  [{history_option}] 查看发布历史")
+
     # 最后一个选项：设置定时时间
-    last_option = len(PLATFORMS) + 3
+    last_option = len(PLATFORMS) + 4
     print(f"  [{last_option}] 设置定时发布时间")
+
+    # 新选项：修改视频信息
+    edit_video_option = len(PLATFORMS) + 5
+    print(f"  [{edit_video_option}] 修改标题和标签")
+
     print()
     print("  [0] 退出")
+    print()
+    print("说明：❌=未登录  🔴=已禁用")
     print("=" * 60)
 
 
@@ -347,6 +470,154 @@ def get_schedule_time_config():
         print("\n当前设置: 立即发布")
 
     return schedule_time
+
+
+def edit_video_info():
+    """修改视频标题和标签"""
+    videos_dir = Path("videos")
+    if not videos_dir.exists():
+        print("\n❌ videos/ 目录不存在")
+        return
+
+    video_files = sorted(list(videos_dir.glob("*.mp4")))
+    if not video_files:
+        print("\n❌ videos/ 目录下没有视频文件")
+        return
+
+    # 显示视频列表
+    print("\n" + "=" * 60)
+    print("📝 选择要修改的视频")
+    print("=" * 60)
+
+    for i, video_file in enumerate(video_files, 1):
+        print(f"  [{i}] {video_file.name}")
+
+    print("  [0] 返回")
+    print("=" * 60)
+
+    choice = input("\n请选择视频: ").strip()
+
+    if choice == '0':
+        return
+
+    try:
+        video_index = int(choice) - 1
+        if video_index < 0 or video_index >= len(video_files):
+            print("\n❌ 无效的选择")
+            return
+    except ValueError:
+        print("\n❌ 无效的输入")
+        return
+
+    video_file = video_files[video_index]
+    txt_file = video_file.with_suffix('.txt')
+    png_file = video_file.with_suffix('.png')
+    png_file_cap = video_file.with_suffix('.PNG')
+
+    # 读取当前内容
+    current_title = ""
+    current_tags = ""
+    current_desc = ""
+
+    if txt_file.exists():
+        with open(txt_file, 'r', encoding='utf-8') as f:
+            lines = f.read().strip().split('\n')
+            if lines:
+                current_title = lines[0].strip()
+            if len(lines) >= 2:
+                current_tags = lines[1].strip()
+            if len(lines) >= 3:
+                current_desc = lines[2].strip()
+
+    # 显示当前信息并输入新信息
+    print("\n" + "=" * 60)
+    print(f"📝 修改视频信息: {video_file.name}")
+    print("=" * 60)
+
+    print(f"\n当前标题: {current_title}")
+    new_title = input("新标题 (直接回车保持不变): ").strip()
+
+    print(f"\n当前标签: {current_tags}")
+    new_tags = input("新标签 (直接回车保持不变): ").strip()
+
+    print(f"\n当前描述: {current_desc[:100]}{'...' if len(current_desc) > 100 else ''}")
+    new_desc = input("新描述 (直接回车保持不变): ").strip()
+
+    # 如果没有修改，直接返回
+    if not new_title and not new_tags and not new_desc:
+        print("\n⚠️  未做任何修改")
+        return
+
+    # 使用新值或保持原值
+    final_title = new_title if new_title else current_title
+    final_tags = new_tags if new_tags else current_tags
+    final_desc = new_desc if new_desc else current_desc
+
+    # 写入txt文件
+    with open(txt_file, 'w', encoding='utf-8') as f:
+        f.write(final_title + '\n')
+        f.write(final_tags + '\n')
+        f.write(final_desc + '\n')
+
+    print(f"\n✅ 已更新 {txt_file.name}")
+
+    # 如果修改了标题，重命名文件
+    if new_title and new_title != current_title:
+        old_base = video_file.stem
+
+        # 构建新文件名（替换非法字符）
+        safe_title = new_title.replace('/', '-').replace('\\', '-').replace(':', '-')
+        safe_title = ''.join(c for c in safe_title if c.isalnum() or c in (' ', '-', '_', '(', ')', '【', '】', '（', '）'))
+        safe_title = safe_title.strip()
+        safe_title = safe_title[:50] if len(safe_title) > 50 else safe_title  # 限制长度
+
+        if not safe_title:
+            print("\n❌ 标题包含无效字符，无法重命名文件")
+            print("\n" + "=" * 60)
+            return
+
+        new_video_name = f"{safe_title}.mp4"
+        new_txt_name = f"{safe_title}.txt"
+
+        new_video_file = videos_dir / new_video_name
+        new_txt_file = videos_dir / new_txt_name
+
+        # 重命名视频文件
+        if video_file.exists():
+            if new_video_file.exists():
+                print(f"\n⚠️  目标文件已存在: {new_video_name}")
+                overwrite = input("是否覆盖? (y/N): ").strip().lower()
+                if overwrite == 'y':
+                    new_video_file.unlink()
+                    video_file.rename(new_video_file)
+                    print(f"✅ 已重命名: {video_file.name} -> {new_video_name}")
+                else:
+                    print(f"⚠️  跳过视频文件重命名")
+            else:
+                video_file.rename(new_video_file)
+                print(f"✅ 已重命名: {video_file.name} -> {new_video_name}")
+
+        # 重命名txt文件
+        if txt_file.exists():
+            if new_txt_file.exists():
+                # 如果新文件已存在（可能因为视频文件重命名导致），直接覆盖
+                new_txt_file.unlink()
+            txt_file.rename(new_txt_file)
+            print(f"✅ 已重命名: {txt_file.name} -> {new_txt_name}")
+
+        # 重命名png文件（如果存在）
+        for ext in ['.png', '.PNG']:
+            old_png = videos_dir / f"{old_base}{ext}"
+            new_png = videos_dir / f"{safe_title}{ext}"
+            if old_png.exists():
+                if new_png.exists():
+                    new_png.unlink()
+                old_png.rename(new_png)
+                print(f"✅ 已重命名: {old_png.name} -> {new_png.name}")
+
+        print(f"\n✅ 所有文件已重命名为: {safe_title}")
+
+    print("\n" + "=" * 60)
 
 
 def set_schedule_time():
@@ -657,12 +928,12 @@ def run_single_platform(platform, schedule_time=None):
         input("\n按回车键继续...")
         return
 
-    # 检查 cookie
+    # 检查 cookie，如果没有直接登录，不询问
     if not check_cookie_exists(platform['cookie_file']):
-        action = ask_user_login(platform_name, platform.get('login_script'))
-
-        if action == 'login':
-            success = run_login(platform['login_script'])
+        login_script = platform.get('login_script')
+        if login_script and Path(login_script).exists():
+            print(f"⚠️  {platform_name} 未登录，正在打开登录页面...")
+            success = run_login(login_script)
             if not success:
                 print(f"❌ {platform_name} 登录失败")
                 input("\n按回车键继续...")
@@ -673,7 +944,7 @@ def run_single_platform(platform, schedule_time=None):
                 input("\n按回车键继续...")
                 return
         else:
-            print(f"⊘ {platform_name} - 跳过（无 Cookie）")
+            print(f"❌ {platform_name} 无 Cookie 且无登录脚本")
             input("\n按回车键继续...")
             return
 
@@ -683,6 +954,35 @@ def run_single_platform(platform, schedule_time=None):
         print(f"❌ 上传脚本不存在: {script_path}")
         input("\n按回车键继续...")
         return
+
+    # 显示视频文件信息
+    videos_dir = Path("videos")
+    if videos_dir.exists():
+        video_files = sorted(list(videos_dir.glob("*.mp4")))
+        if video_files:
+            print(f"\n📹 即将上传的视频:")
+            for i, video_file in enumerate(video_files, 1):
+                file_size = video_file.stat().st_size / (1024 * 1024)  # MB
+                txt_file = video_file.with_suffix('.txt')
+
+                print(f"\n  [{i}] {video_file.name} ({file_size:.1f} MB)")
+
+                # 读取并显示 txt 文件内容
+                if txt_file.exists():
+                    with open(txt_file, 'r', encoding='utf-8') as f:
+                        lines = f.read().strip().split('\n')
+
+                    if lines:
+                        print(f"      标题: {lines[0].strip()}")
+                        if len(lines) >= 2:
+                            print(f"      标签: {lines[1].strip()}")
+                        if len(lines) >= 3:
+                            desc_preview = lines[2].strip()[:50]
+                            if len(lines[2].strip()) > 50:
+                                desc_preview += "..."
+                            print(f"      描述: {desc_preview}")
+                else:
+                    print(f"      ⚠️  未找到对应的 txt 文件")
 
     print(f"\n⏳ 正在启动 {platform_name} 上传...")
     print(f"💡 上传完成后，请关闭浏览器窗口或等待完成")
@@ -694,16 +994,33 @@ def run_single_platform(platform, schedule_time=None):
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
-        bufsize=1
+        bufsize=1,
+        universal_newlines=True
     )
 
-    # 监控进程
+    # 监控进程并实时输出
     start_time = time.time()
 
     while True:
+        # 实时读取输出
+        output = process.stdout.readline()
+        if output:
+            print(output.strip())
+
         # 检查进程是否结束
         if process.poll() is not None:
-            print(f"\n✅ {platform_name} 上传进程已结束")
+            exit_code = process.returncode
+
+            # 读取剩余的所有输出
+            remaining_output = process.stdout.read()
+            if remaining_output:
+                print(remaining_output.strip())
+
+            if exit_code == 0:
+                print(f"\n✅ {platform_name} 上传进程已结束")
+            else:
+                print(f"\n⚠️  {platform_name} 上传进程异常结束（退出码: {exit_code}）")
+                print(f"💡 详细错误信息请查看上方日志")
             break
 
         # 检查是否超时（30分钟）
@@ -715,8 +1032,8 @@ def run_single_platform(platform, schedule_time=None):
                 process.kill()
             break
 
-        # 等待一段时间
-        time.sleep(2)
+        # 短暂等待，避免CPU占用过高
+        time.sleep(0.1)
 
     # 按任意键继续
     input("\n按回车键继续...")
@@ -790,18 +1107,26 @@ def main():
             run_all_platforms(schedule_time)
 
         elif choice.isdigit() and 2 <= int(choice) <= len(PLATFORMS) + 1:
-            # 执行单个平台
+            # 进入平台设置
             index = int(choice) - 2
             platform = PLATFORMS[index]
-            run_single_platform(platform, schedule_time)
+            show_platform_settings(platform)
 
         elif choice == str(len(PLATFORMS) + 2):
             # 切换账号
             show_account_menu()
 
         elif choice == str(len(PLATFORMS) + 3):
+            # 查看发布历史
+            show_publish_history()
+
+        elif choice == str(len(PLATFORMS) + 4):
             # 设置定时时间
             set_schedule_time()
+
+        elif choice == str(len(PLATFORMS) + 5):
+            # 修改视频标题和标签
+            edit_video_info()
 
         else:
             print("\n❌ 无效的选项，请重新选择")

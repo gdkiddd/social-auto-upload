@@ -8,11 +8,16 @@ import asyncio
 from conf import LOCAL_CHROME_PATH, LOCAL_CHROME_HEADLESS
 from utils.base_social_media import set_init_script
 from utils.log import xiaohongshu_logger
+from myUtils.publish_history import get_publish_history
+from myUtils.account_manager import get_current_account
+from pathlib import Path
 
 
 async def cookie_auth(account_file):
     async with async_playwright() as playwright:
-        browser = await playwright.chromium.launch(headless=LOCAL_CHROME_HEADLESS)
+        browser = await playwright.chromium.launch(
+            headless=LOCAL_CHROME_HEADLESS
+        )
         context = await browser.new_context(storage_state=account_file)
         context = await set_init_script(context)
         # 创建一个新的页面
@@ -48,10 +53,12 @@ async def xiaohongshu_setup(account_file, handle=False):
 async def xiaohongshu_cookie_gen(account_file):
     async with async_playwright() as playwright:
         options = {
-            'headless': LOCAL_CHROME_HEADLESS
+            'headless': LOCAL_CHROME_HEADLESS,
         }
         # Make sure to run headed.
-        browser = await playwright.chromium.launch(**options)
+        browser = await playwright.chromium.launch(
+            **options
+        )
         # Setup context however you like.
         context = await browser.new_context()  # Pass any options
         context = await set_init_script(context)
@@ -108,13 +115,21 @@ class XiaoHongShuVideo(object):
 
     async def upload(self, playwright: Playwright) -> None:
         # 使用 Chromium 浏览器启动一个浏览器实例
+
+        # 准备浏览器启动选项
+        launch_options = {
+            'headless': self.headless,
+        }
+
         if self.local_executable_path:
-            browser = await playwright.chromium.launch(headless=self.headless, executable_path=self.local_executable_path)
-        else:
-            browser = await playwright.chromium.launch(headless=self.headless)
+            launch_options['executable_path'] = self.local_executable_path
+
+        browser = await playwright.chromium.launch(
+            **launch_options
+        )
         # 创建一个浏览器上下文，使用指定的 cookie 文件
         context = await browser.new_context(
-            viewport={"width": 1600, "height": 900},
+            viewport={"width": 1250, "height": 1250},
             storage_state=f"{self.account_file}"
         )
         context = await set_init_script(context)
@@ -167,14 +182,18 @@ class XiaoHongShuVideo(object):
         title_container = page.locator('div.plugin.title-container').locator('input.d-text')
         if await title_container.count():
             await title_container.fill(self.title[:30])
+            await asyncio.sleep(1)
         else:
             titlecontainer = page.locator(".notranslate")
             await titlecontainer.click()
+            await asyncio.sleep(1)
             await page.keyboard.press("Backspace")
             await page.keyboard.press("Control+KeyA")
             await page.keyboard.press("Delete")
             await page.keyboard.type(self.title)
+            await asyncio.sleep(1)
             await page.keyboard.press("Enter")
+            await asyncio.sleep(1)
         css_selector = ".ql-editor" # 不能加上 .ql-blank 属性，这样只能获取第一次非空状态
         # 等待话题输入框准备就绪
         try:
@@ -189,18 +208,19 @@ class XiaoHongShuVideo(object):
                 try:
                     # 点击输入框确保焦点
                     await page.click(css_selector, timeout=5000)
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(1)
                     # 输入标签
                     await page.type(css_selector, "#" + tag)
-                    await asyncio.sleep(0.3)
+                    await asyncio.sleep(1)
                     # 按空格确认标签
                     await page.keyboard.press("Space")
                     xiaohongshu_logger.info(f"  [-] 已添加标签 #{tag}")
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(1)
                 except Exception as e:
                     xiaohongshu_logger.warning(f"  [-] 添加标签 #{tag} 失败: {str(e)}")
                     continue
             xiaohongshu_logger.info(f'总共添加{len(self.tags)}个话题')
+            await asyncio.sleep(1)
 
         # while True:
         #     # 判断重新上传按钮是否存在，如果不存在，代表视频正在上传，则等待
@@ -251,6 +271,15 @@ class XiaoHongShuVideo(object):
                     timeout=3000
                 )  # 如果自动跳转到作品页面，则代表发布成功
                 xiaohongshu_logger.success("  [-]视频发布成功")
+                # 记录发布历史
+                publish_history = get_publish_history()
+                publish_history.add_record(
+                    platform_id='xiaohongshu',
+                    platform_name='小红书',
+                    video_file=Path(self.file_path).name,
+                    status='success',
+                    account=get_current_account()
+                )
                 break
             except:
                 xiaohongshu_logger.info("  [-] 视频正在发布中...")

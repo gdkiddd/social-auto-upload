@@ -9,6 +9,10 @@ from conf import LOCAL_CHROME_PATH, LOCAL_CHROME_HEADLESS
 from utils.base_social_media import set_init_script
 from utils.files_times import get_absolute_path
 from utils.log import kuaishou_logger
+from myUtils.publish_history import get_publish_history
+from myUtils.account_manager import get_current_account
+from pathlib import Path
+import glob
 
 
 async def cookie_auth(account_file):
@@ -76,19 +80,145 @@ class KSVideo(object):
         kuaishou_logger.error("视频出错了，重新上传中")
         await page.locator('div.progress-div [class^="upload-btn-input"]').set_input_files(self.file_path)
 
+    async def set_cover(self, page):
+        """设置视频封面"""
+        kuaishou_logger.info("  [-] 开始设置封面...")
+
+        try:
+            # 1. 点击"封面设置"
+            cover_setting_button = page.locator('div._default-cover_ps02t_86 div:has-text("封面设置")')
+            if await cover_setting_button.count() == 0:
+                kuaishou_logger.info("  [-] 未找到封面设置按钮，跳过封面设置")
+                return
+
+            await cover_setting_button.click()
+            await asyncio.sleep(1)
+
+            # 2. 点击"上传封面"
+            upload_cover_button = page.locator('div._header-title-item_2t3fe_27:has-text("上传封面")')
+            if await upload_cover_button.count() == 0:
+                kuaishou_logger.info("  [-] 未找到上传封面按钮")
+                return
+
+            await upload_cover_button.click()
+            await asyncio.sleep(1)
+
+            # 3. 点击"上传图片"按钮并选择文件
+            upload_img_button = page.locator('button._upload-btn_1i0wh_73:has-text("上传图片")')
+            if await upload_img_button.count() == 0:
+                kuaishou_logger.info("  [-] 未找到上传图片按钮")
+                return
+
+            # 查找封面图片
+            video_file = Path(self.file_path)
+            videos_dir = video_file.parent
+
+            # 尝试多种封面图片格式
+            cover_extensions = ['.png', '.PNG', '.jpg', '.jpeg', '.JPG', '.JPEG']
+            cover_file = None
+
+            for ext in cover_extensions:
+                potential_cover = video_file.with_suffix(ext)
+                if potential_cover.exists():
+                    cover_file = potential_cover
+                    break
+
+            if not cover_file:
+                # 如果找不到同名的封面图，尝试查找 videos 目录下的第一个图片
+                videos_dir = Path("videos")
+                if videos_dir.exists():
+                    # 查找所有图片文件
+                    image_patterns = ['*.png', '*.PNG', '*.jpg', '*.jpeg', '*.JPG', '*.JPEG']
+                    for pattern in image_patterns:
+                        images = list(videos_dir.glob(pattern))
+                        if images:
+                            cover_file = images[0]
+                            break
+
+            if cover_file:
+                kuaishou_logger.info(f"  [-] 找到封面图片: {cover_file.name}")
+
+                # 使用 file chooser API 上传文件
+                async with page.expect_file_chooser() as fc_info:
+                    await upload_img_button.click()
+
+                file_chooser = await fc_info.value
+                await file_chooser.set_files(str(cover_file))
+
+                kuaishou_logger.success(f"  [-] 封面图片已选择: {cover_file.name}")
+                await asyncio.sleep(2)
+            else:
+                kuaishou_logger.info("  [-] 未找到封面图片，跳过封面设置")
+                # 点击返回取消封面设置
+                return
+
+            # 4. 点击"确认"按钮
+            confirm_button = page.locator('button:has-text("确认")')
+            if await confirm_button.count() > 0:
+                await confirm_button.click()
+                kuaishou_logger.success("  [-] 封面设置成功")
+                await asyncio.sleep(1)
+            else:
+                kuaishou_logger.warning("  [-] 未找到确认按钮")
+
+            # 5. 在互动设置中，取消勾选"允许下载此作品"
+            await self.disable_download_option(page)
+
+        except Exception as e:
+            kuaishou_logger.error(f"  ❌ 封面设置失败: {str(e)}")
+            # 封面设置失败不影响视频发布，继续执行
+
+    async def disable_download_option(self, page):
+        """在互动设置中取消勾选'允许下载此作品'"""
+        try:
+            kuaishou_logger.info("  [-] 设置互动选项...")
+
+            # 直接查找包含"允许下载此作品"文字的 checkbox wrapper
+            checkbox_wrapper = page.locator('label.ant-checkbox-wrapper:has-text("允许下载此作品")')
+
+            if await checkbox_wrapper.count() == 0:
+                kuaishou_logger.info("  [-] 未找到'允许下载此作品'选项，可能已默认关闭")
+                return
+
+            # 检查是否已勾选
+            class_list = await checkbox_wrapper.get_attribute('class') or ''
+            is_checked = 'ant-checkbox-wrapper-checked' in class_list
+
+            kuaishou_logger.info(f"  [-] Checkbox class: {class_list}")
+            kuaishou_logger.info(f"  [-] 是否已勾选: {is_checked}")
+
+            if is_checked:
+                # 点击整个 wrapper 来切换状态
+                await checkbox_wrapper.click()
+                kuaishou_logger.success("  [-] 已取消勾选'允许下载此作品'")
+            else:
+                kuaishou_logger.info("  [-] '允许下载此作品' 未勾选")
+
+            await asyncio.sleep(1)
+
+        except Exception as e:
+            kuaishou_logger.warning(f"  ⚠️  设置互动选项时出错: {str(e)}")
+            import traceback
+            kuaishou_logger.warning(traceback.format_exc())
+            # 互动设置失败不影响视频发布
+
     async def upload(self, playwright: Playwright) -> None:
         # 使用 Chromium 浏览器启动一个浏览器实例
         print(self.local_executable_path)
+
+        # 准备浏览器启动选项
+        launch_options = {
+            'headless': self.headless,
+        }
+
         if self.local_executable_path:
-            browser = await playwright.chromium.launch(
-                headless=self.headless,
-                executable_path=self.local_executable_path,
-            )
-        else:
-            browser = await playwright.chromium.launch(
-                headless=self.headless
-            )  # 创建一个浏览器上下文，使用指定的 cookie 文件
-        context = await browser.new_context(storage_state=f"{self.account_file}")
+            launch_options['executable_path'] = self.local_executable_path
+
+        browser = await playwright.chromium.launch(**launch_options)
+        context = await browser.new_context(
+            viewport={"width": 1250, "height": 1250},
+            storage_state=f"{self.account_file}"
+        )
         context = await set_init_script(context)
         # 创建一个新的页面
         page = await context.new_page()
@@ -158,6 +288,10 @@ class KSVideo(object):
         if retry_count == max_retries:
             kuaishou_logger.warning("超过最大重试次数，视频上传可能未完成。")
 
+        # 上传封面
+        await self.set_cover(page)
+        await asyncio.sleep(1)
+
         # 定时任务
         if self.publish_date != 0:
             await self.set_schedule_time(page, self.publish_date)
@@ -180,6 +314,15 @@ class KSVideo(object):
                     timeout=5000,
                 )
                 kuaishou_logger.success("视频发布成功")
+                # 记录发布历史
+                publish_history = get_publish_history()
+                publish_history.add_record(
+                    platform_id='kuaishou',
+                    platform_name='快手',
+                    video_file=Path(self.file_path).name,
+                    status='success',
+                    account=get_current_account()
+                )
                 break
             except Exception as e:
                 kuaishou_logger.info(f"视频正在发布中... 错误: {e}")
@@ -190,9 +333,6 @@ class KSVideo(object):
         kuaishou_logger.info('cookie更新完毕！')
         kuaishou_logger.success('  [-]视频已成功发布，浏览器窗口将保持打开状态，请手动关闭')
         await asyncio.sleep(3600)  # 保持浏览器打开 1 小时，方便手动操作
-        # 注释掉关闭代码，让浏览器保持打开
-        # await context.close()
-        # await browser.close()
 
     async def main(self):
         async with async_playwright() as playwright:

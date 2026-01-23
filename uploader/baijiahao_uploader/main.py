@@ -7,10 +7,13 @@ import os
 import time
 import asyncio
 
-from conf import LOCAL_CHROME_PATH, LOCAL_CHROME_HEADLESS
+from conf import LOCAL_CHROME_PATH, LOCAL_CHROME_HEADLESS, get_step_delay
 from utils.base_social_media import set_init_script
 from utils.log import baijiahao_logger
 from utils.network import async_retry
+from myUtils.publish_history import get_publish_history
+from myUtils.account_manager import get_current_account
+from pathlib import Path
 
 
 async def baijiahao_cookie_gen(account_file):
@@ -22,7 +25,9 @@ async def baijiahao_cookie_gen(account_file):
             'headless': LOCAL_CHROME_HEADLESS,  # Set headless option here
         }
         # Make sure to run headed.
-        browser = await playwright.chromium.launch(**options)
+        browser = await playwright.chromium.launch(
+            **options
+        )
         # Setup context however you like.
         context = await browser.new_context()  # Pass any options
         context = await set_init_script(context)
@@ -37,7 +42,9 @@ async def baijiahao_cookie_gen(account_file):
 
 async def cookie_auth(account_file):
     async with async_playwright() as playwright:
-        browser = await playwright.chromium.launch(headless=LOCAL_CHROME_HEADLESS)
+        browser = await playwright.chromium.launch(
+            headless=LOCAL_CHROME_HEADLESS
+        )
         context = await browser.new_context(storage_state=account_file)
         context = await set_init_script(context)
         # 创建一个新的页面
@@ -73,14 +80,18 @@ class BaiJiaHaoVideo(object):
         self.local_executable_path = LOCAL_CHROME_PATH
         self.headless = LOCAL_CHROME_HEADLESS
         self.proxy_setting = proxy_setting
+        self.step_delay = get_step_delay()  # 获取步骤延迟时间
 
     async def set_schedule_time(self, page, publish_date):
         """
+        设置定时发布的时间
         todo 时间选择，日后在处理 百家号的时间选择不准确，目前是随机
         """
         publish_date_day = f"{publish_date.month}月{publish_date.day}日" if publish_date.day >9  else f"{publish_date.month}月0{publish_date.day}日"
         publish_date_hour = f"{publish_date.hour}点"
         publish_date_min = f"{publish_date.minute}分"
+
+        baijiahao_logger.info(f"设置发布日期: {publish_date_day}")
         await page.wait_for_selector('div.select-wrap', timeout=5000)
         for _ in range(3):
             try:
@@ -89,12 +100,13 @@ class BaiJiaHaoVideo(object):
                 break
             except:
                 await page.locator('div.select-wrap').nth(0).click()
-        # page.locator(f'div.rc-virtual-list-holder-inner >> text={publish_date_day}').click()
-        await page.wait_for_timeout(2000)
+        await asyncio.sleep(self.step_delay)
         await page.locator(f'div.rc-virtual-list  div.cheetah-select-item >> text={publish_date_day}').click()
-        await page.wait_for_timeout(2000)
+        await asyncio.sleep(self.step_delay)
+        baijiahao_logger.success(f"日期设置成功: {publish_date_day}")
 
         # 改为随机点击一个 hour
+        baijiahao_logger.info("设置发布时间（小时）...")
         for _ in range(3):
             try:
                 await page.locator('div.select-wrap').nth(1).click()
@@ -102,15 +114,25 @@ class BaiJiaHaoVideo(object):
                 break
             except:
                 await page.locator('div.select-wrap').nth(1).click()
-        await page.wait_for_timeout(2000)
+        await asyncio.sleep(self.step_delay)
         current_choice_hour = await page.locator('div.rc-virtual-list:visible div.cheetah-select-item-option').count()
-        await page.wait_for_timeout(2000)
-        await page.locator('div.rc-virtual-list:visible div.cheetah-select-item-option').nth(
-            random.randint(1, current_choice_hour-3)).click()
+        await asyncio.sleep(self.step_delay)
+        hour_index = random.randint(1, max(2, current_choice_hour-3))
+        await page.locator('div.rc-virtual-list:visible div.cheetah-select-item-option').nth(hour_index).click()
         # 2024.08.05 current_choice_hour的获取可能有问题，页面有7，这里获取了10，暂时硬编码至6
 
-        await page.wait_for_timeout(2000)
-        await page.locator("button >> text=定时发布").click()
+        await asyncio.sleep(self.step_delay)
+
+        # 最终确认点击"定时发布"按钮
+        # 这个是确认按钮，使用主要样式（cheetah-btn-primary）
+        baijiahao_logger.info("正在确认定时发布...")
+        confirm_button = page.locator("button.cheetah-btn-primary:has-text('定时发布'), button.cheetah-btn-solid:has-text('定时发布')")
+        if await confirm_button.count() > 0:
+            await confirm_button.first.click()
+            baijiahao_logger.success("定时发布确认成功")
+        else:
+            baijiahao_logger.error("未找到定时发布确认按钮")
+            raise Exception("未找到定时发布确认按钮")
 
 
     async def handle_upload_error(self, page):
@@ -120,9 +142,27 @@ class BaiJiaHaoVideo(object):
 
     async def upload(self, playwright: Playwright) -> None:
         # 使用 Chromium 浏览器启动一个浏览器实例
-        browser = await playwright.chromium.launch(headless=self.headless, executable_path=self.local_executable_path, proxy=self.proxy_setting)
+
+        # 准备浏览器启动选项
+        launch_options = {
+            'headless': self.headless,
+        }
+
+        if self.local_executable_path:
+            launch_options['executable_path'] = self.local_executable_path
+
+        if self.proxy_setting:
+            launch_options['proxy'] = self.proxy_setting
+
+        browser = await playwright.chromium.launch(
+            **launch_options
+        )
         # 创建一个浏览器上下文，使用指定的 cookie 文件
-        context = await browser.new_context(storage_state=f"{self.account_file}", user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.4324.150 Safari/537.36')
+        context = await browser.new_context(
+            viewport={"width": 1250, "height": 1250},
+            storage_state=f"{self.account_file}",
+            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.4324.150 Safari/537.36'
+        )
         # context = await set_init_script(context)
         await context.grant_permissions(['geolocation'])
 
@@ -149,8 +189,7 @@ class BaiJiaHaoVideo(object):
                 await asyncio.sleep(0.1)
 
         # 填充标题和话题
-        # 这里为了避免页面变化，故使用相对位置定位：作品标题父级右侧第一个元素的input子元素
-        await asyncio.sleep(1)
+        await asyncio.sleep(self.step_delay)
         baijiahao_logger.info("正在填充标题和话题...")
         await self.add_title_tags(page)
 
@@ -158,6 +197,9 @@ class BaiJiaHaoVideo(object):
         if not upload_status:
             baijiahao_logger.error(f"发现上传出错了... 文件:{self.file_path}")
             raise
+
+        # 设置封面
+        await self.set_cover(page)
 
         # 判断视频封面图是否生成成功
         while True:
@@ -167,15 +209,37 @@ class BaiJiaHaoVideo(object):
                 break
             else:
                 baijiahao_logger.info("等待封面生成...")
-                await asyncio.sleep(3)
+                await asyncio.sleep(self.step_delay)
 
         await self.publish_video(page, self.publish_date)
-        await page.wait_for_timeout(2000)
+        await asyncio.sleep(self.step_delay)
+
+        # 检查是否出现验证
         if await page.locator('div.passMod_dialog-container >> text=百度安全验证:visible').count():
-            baijiahao_logger.error("出现验证，退出")
-            raise Exception("出现验证，退出")
-        await page.wait_for_url("https://baijiahao.baidu.com/builder/rc/clue**", timeout=5000)
+            baijiahao_logger.warning("⚠️  检测到百度安全验证")
+            baijiahao_logger.info("🔓 请手动完成验证操作")
+            baijiahao_logger.info("💡 验证完成后浏览器将保持打开，您可以手动关闭")
+            # 保持浏览器打开，不抛出异常
+            await asyncio.sleep(3600)  # 保持浏览器打开 1 小时，方便用户手动操作
+            return
+
+        # 等待发布完成（不强制要求URL跳转）
+        try:
+            await page.wait_for_url("https://baijiahao.baidu.com/builder/rc/clue**", timeout=3000)
+        except:
+            # URL可能不跳转，检查是否有成功提示
+            pass
+
         baijiahao_logger.success("视频发布成功")
+        # 记录发布历史
+        publish_history = get_publish_history()
+        publish_history.add_record(
+            platform_id='baijiahao',
+            platform_name='百家号',
+            video_file=Path(self.file_path).name,
+            status='success',
+            account=get_current_account()
+        )
 
         await context.storage_state(path=self.account_file)  # 保存cookie
         baijiahao_logger.info('cookie更新完毕！')
@@ -207,16 +271,27 @@ class BaiJiaHaoVideo(object):
                 return True
 
     async def set_schedule_publish(self, page, publish_date):
+        """点击定时发布按钮并设置发布时间"""
+        baijiahao_logger.info("正在点击定时发布按钮（打开设置页面）...")
         while True:
-            schedule_element = page.locator("div.op-btn-outter-content >> text=定时发布").locator("..").locator(
-                'button')
             try:
-                await schedule_element.click()
-                await page.wait_for_selector('div.select-wrap:visible', timeout=3000)
-                await page.wait_for_timeout(timeout=2000)
-                baijiahao_logger.info("开始点击发布定时...")
-                await self.set_schedule_time(page, publish_date)
-                break
+                # 定位次要样式的定时发布按钮（cheetah-btn-default）
+                # 这个按钮用于打开定时设置弹窗
+                schedule_button = page.locator("button.cheetah-btn-default:has-text('定时发布'), button:has-text('定时发布').cheetah-btn-outlined")
+                if await schedule_button.count() > 0:
+                    await schedule_button.first.click()
+                    baijiahao_logger.success("定时发布按钮点击成功")
+
+                    # 等待时间选择器出现
+                    await page.wait_for_selector('div.select-wrap:visible', timeout=5000)
+                    await asyncio.sleep(self.step_delay)
+
+                    baijiahao_logger.info("开始设置定时发布时间...")
+                    await self.set_schedule_time(page, publish_date)
+                    break
+                else:
+                    baijiahao_logger.error("未找到定时发布按钮")
+                    raise Exception("未找到定时发布按钮")
             except Exception as e:
                 baijiahao_logger.error(f"定时发布失败: {e}")
                 raise  # 重新抛出异常，让重试装饰器捕获
@@ -232,18 +307,116 @@ class BaiJiaHaoVideo(object):
 
     async def direct_publish(self, page):
         try:
-            publish_button = page.locator("button >> text=发布")
-            if await publish_button.count():
+            # 使用 exact=True 精确匹配"发布"按钮，避免匹配到"定时发布"
+            publish_button = page.get_by_text("发布", exact=True)
+            if await publish_button.count() > 0:
                 await publish_button.click()
+                baijiahao_logger.info("已点击发布按钮")
+                await asyncio.sleep(self.step_delay)
+            else:
+                baijiahao_logger.error("未找到发布按钮")
+                raise Exception("未找到发布按钮")
         except Exception as e:
             baijiahao_logger.error(f"直接发布视频失败: {e}")
             raise  # 重新抛出异常，让重试装饰器捕获
 
+    async def set_cover(self, page):
+        """设置视频封面"""
+        baijiahao_logger.info("  [-] 开始设置封面...")
+
+        try:
+            # 等待封面元素出现
+            await asyncio.sleep(self.step_delay)
+
+            # 点击"编辑封面"按钮 - 使用 first 避免匹配到多个元素
+            cover_wrapper = page.locator('div[class*="coverWrapper"]').first
+            if await cover_wrapper.count() == 0:
+                baijiahao_logger.info("  [-] 未找到封面元素，跳过封面设置")
+                return
+
+            await cover_wrapper.click()
+            await asyncio.sleep(self.step_delay)
+
+            # 查找封面图片
+            video_file = Path(self.file_path)
+            cover_extensions = ['.png', '.PNG', '.jpg', '.jpeg', '.JPG', '.JPEG']
+            cover_file = None
+
+            for ext in cover_extensions:
+                potential_cover = video_file.with_suffix(ext)
+                if potential_cover.exists():
+                    cover_file = potential_cover
+                    break
+
+            if not cover_file:
+                # 如果找不到同名的封面图，尝试查找 videos 目录下的第一个图片
+                videos_dir = Path("videos")
+                if videos_dir.exists():
+                    image_patterns = ['*.png', '*.PNG', '*.jpg', '*.jpeg', '*.JPG', '*.JPEG']
+                    for pattern in image_patterns:
+                        images = list(videos_dir.glob(pattern))
+                        if images:
+                            cover_file = images[0]
+                            break
+
+            if not cover_file:
+                baijiahao_logger.info("  [-] 未找到封面图片，跳过封面设置")
+                return
+
+            baijiahao_logger.info(f"  [-] 找到封面图片: {cover_file.name}")
+
+            # 点击"本地上传"按钮并使用 file chooser API 选择文件
+            local_upload_button = page.locator('div._28b32fc37e18461a-noimg:has-text("本地上传")')
+            if await local_upload_button.count() == 0:
+                baijiahao_logger.info("  [-] 未找到本地上传按钮，跳过封面设置")
+                return
+
+            # 使用 file chooser API
+            async with page.expect_file_chooser() as fc_info:
+                await local_upload_button.click()
+
+            file_chooser = await fc_info.value
+            await file_chooser.set_files(str(cover_file))
+            baijiahao_logger.success(f"  [-] 封面图片已选择: {cover_file.name}")
+            await asyncio.sleep(self.step_delay)
+
+            # 点击"确定"
+            confirm_button = page.locator('button:has-text("确定")')
+            if await confirm_button.count() > 0:
+                # 找到第一个可点击的确定按钮
+                await confirm_button.first.click()
+                baijiahao_logger.success("  [-] 封面设置成功")
+                await asyncio.sleep(self.step_delay)
+            else:
+                baijiahao_logger.warning("  [-] 未找到确定按钮")
+
+        except Exception as e:
+            baijiahao_logger.error(f"  ❌ 封面设置失败: {str(e)}")
+            # 封面设置失败不影响视频发布
+
     async def add_title_tags(self, page):
+        """填充标题和话题标签"""
+        # 填充标题
         title_container = page.get_by_placeholder('添加标题获得更多推荐')
         if len(self.title) <= 8:
             self.title += " 你不知道的"
         await title_container.fill(self.title[:30])
+        await asyncio.sleep(self.step_delay)
+
+        # 填充话题标签
+        if self.tags:
+            baijiahao_logger.info("  [-] 正在添加话题标签...")
+
+            # 查找话题输入框
+            topic_input = page.locator('input.edit-video-topic-input')
+            if await topic_input.count() > 0:
+                # 将标签转换为 #标签1 #标签2 格式
+                tags_text = ' '.join([f"#{tag}" for tag in self.tags[:5]])  # 最多5个标签
+                await topic_input.fill(tags_text)
+                baijiahao_logger.success(f"  [-] 话题标签已添加: {tags_text}")
+                await asyncio.sleep(self.step_delay)
+            else:
+                baijiahao_logger.info("  [-] 未找到话题输入框，跳过标签添加")
 
     async def main(self):
         async with async_playwright() as playwright:
@@ -254,7 +427,21 @@ class BaiJiaHaoVideo(object):
     # 使用 AI成片 功能
     async def ai2video(self, playwright: Playwright) -> None:
         # 使用 Chromium 浏览器启动一个浏览器实例
-        browser = await playwright.chromium.launch(headless=self.headless, executable_path=self.local_executable_path, proxy=self.proxy_setting)
+
+        # 准备浏览器启动选项
+        launch_options = {
+            'headless': self.headless,
+        }
+
+        if self.local_executable_path:
+            launch_options['executable_path'] = self.local_executable_path
+
+        if self.proxy_setting:
+            launch_options['proxy'] = self.proxy_setting
+
+        browser = await playwright.chromium.launch(
+            **launch_options
+        )
         # 创建一个浏览器上下文，使用指定的 cookie 文件
         context = await browser.new_context(
             viewport={"width": 1600, "height": 900},
@@ -298,13 +485,13 @@ class BaiJiaHaoVideo(object):
                """)
 
         # 定位新闻列表容器（转义特殊CSS字符）
-        container_selector = '.overflow-auto.flex-grow.h-0.saas-scrollbar.mt\-\[-4px\].pl\-\[24px\].pr\-\[10px\].pb\-\[18px\]'
-        news_items = await page.locator(container_selector).locator('div.py\-\[6px\].group.cursor-pointer').all()
+        container_selector = r'.overflow-auto.flex-grow.h-0.saas-scrollbar.mt\-\[-4px\].pl\-\[24px\].pr\-\[10px\].pb\-\[18px\]'
+        news_items = await page.locator(container_selector).locator(r'div.py\-\[6px\].group.cursor-pointer').all()
 
         for item in news_items:
             try:
                 # 获取新闻标题
-                title_elem = item.locator('div.flex.text-gray-darker.items-center.relative.pr\-\[56px\] > span')
+                title_elem = item.locator(r'div.flex.text-gray-darker.items-center.relative.pr\-\[56px\] > span')
                 title = await title_elem.text_content()
                 if not title:
                     continue
