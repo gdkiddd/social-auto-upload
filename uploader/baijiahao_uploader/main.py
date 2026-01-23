@@ -159,7 +159,7 @@ class BaiJiaHaoVideo(object):
         )
         # 创建一个浏览器上下文，使用指定的 cookie 文件
         context = await browser.new_context(
-            viewport={"width": 1250, "height": 1250},
+            viewport={"width": 1500, "height": 1200},
             storage_state=f"{self.account_file}",
             user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.4324.150 Safari/537.36'
         )
@@ -218,9 +218,10 @@ class BaiJiaHaoVideo(object):
         if await page.locator('div.passMod_dialog-container >> text=百度安全验证:visible').count():
             baijiahao_logger.warning("⚠️  检测到百度安全验证")
             baijiahao_logger.info("🔓 请手动完成验证操作")
-            baijiahao_logger.info("💡 验证完成后浏览器将保持打开，您可以手动关闭")
-            # 保持浏览器打开，不抛出异常
-            await asyncio.sleep(3600)  # 保持浏览器打开 1 小时，方便用户手动操作
+            baijiahao_logger.warning("⚠️  需要人工介入，跳过此平台")
+            # 验证需要人工处理，直接返回失败
+            await context.close()
+            await browser.close()
             return
 
         # 等待发布完成（不强制要求URL跳转）
@@ -243,11 +244,12 @@ class BaiJiaHaoVideo(object):
 
         await context.storage_state(path=self.account_file)  # 保存cookie
         baijiahao_logger.info('cookie更新完毕！')
-        baijiahao_logger.success('  [-]视频已成功发布，浏览器窗口将保持打开状态，请手动关闭')
-        await asyncio.sleep(3600)  # 保持浏览器打开 1 小时，方便手动操作
-        # 注释掉关闭代码，让浏览器保持打开
-        # await context.close()
-        # await browser.close()
+        baijiahao_logger.success('  [-]视频已成功发布，浏览器即将关闭')
+
+        # 关闭浏览器
+        await context.close()
+        await browser.close()
+        baijiahao_logger.info('  [-] 浏览器已关闭')
 
 
     @async_retry(timeout=300)  # 例如，最多重试3次，超时时间为180秒
@@ -677,17 +679,15 @@ class BaiJiaHaoVideo(object):
 
         print(f"[循环完成] 准备关闭浏览器")
 
-        # 暂停 1000s
-        await asyncio.sleep(1000)  # 这里延迟是为了方便眼睛直观的观看
-
         # 退出前保存 storage 信息
         await context.storage_state(path=self.account_file)  # 保存cookie
         baijiahao_logger.info('cookie更新完毕！')
-        baijiahao_logger.success('  [-]视频已成功发布，浏览器窗口将保持打开状态，请手动关闭')
-        await asyncio.sleep(3600)  # 保持浏览器打开 1 小时，方便手动操作
-        # 注释掉关闭代码，让浏览器保持打开
-        # await context.close()
-        # await browser.close()
+        baijiahao_logger.success('  [-]视频已成功发布，浏览器即将关闭')
+
+        # 关闭浏览器
+        await context.close()
+        await browser.close()
+        baijiahao_logger.info('  [-] 浏览器已关闭')
 
 
     async def mainAi(self):

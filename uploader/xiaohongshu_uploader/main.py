@@ -129,7 +129,7 @@ class XiaoHongShuVideo(object):
         )
         # 创建一个浏览器上下文，使用指定的 cookie 文件
         context = await browser.new_context(
-            viewport={"width": 1250, "height": 1250},
+            viewport={"width": 1500, "height": 1200},
             storage_state=f"{self.account_file}"
         )
         context = await set_init_script(context)
@@ -208,14 +208,14 @@ class XiaoHongShuVideo(object):
                 try:
                     # 点击输入框确保焦点
                     await page.click(css_selector, timeout=5000)
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(0.3)
                     # 输入标签
                     await page.type(css_selector, "#" + tag)
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(0.3)
                     # 按空格确认标签
                     await page.keyboard.press("Space")
                     xiaohongshu_logger.info(f"  [-] 已添加标签 #{tag}")
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(0.3)
                 except Exception as e:
                     xiaohongshu_logger.warning(f"  [-] 添加标签 #{tag} 失败: {str(e)}")
                     continue
@@ -288,11 +288,12 @@ class XiaoHongShuVideo(object):
 
         await context.storage_state(path=self.account_file)  # 保存cookie
         xiaohongshu_logger.success('  [-]cookie更新完毕！')
-        xiaohongshu_logger.success('  [-]视频已成功发布，浏览器窗口将保持打开状态，请手动关闭')
-        await asyncio.sleep(3600)  # 保持浏览器打开 1 小时，方便手动操作
-        # 注释掉关闭代码，让浏览器保持打开
-        # await context.close()
-        # await browser.close()
+        xiaohongshu_logger.success('  [-]视频已成功发布，浏览器即将关闭')
+
+        # 关闭浏览器
+        await context.close()
+        await browser.close()
+        xiaohongshu_logger.info('  [-] 浏览器已关闭')
     
     async def set_thumbnail(self, page: Page, thumbnail_path: str):
         if thumbnail_path:

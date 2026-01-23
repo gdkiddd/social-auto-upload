@@ -120,7 +120,7 @@ class DouYinVideo(object):
         )
         # 创建一个浏览器上下文，使用指定的 cookie 文件
         context = await browser.new_context(
-            viewport={"width": 1250, "height": 1250},
+            viewport={"width": 1500, "height": 1200},
             storage_state=f"{self.account_file}"
         )
         context = await set_init_script(context)
@@ -180,7 +180,7 @@ class DouYinVideo(object):
         for index, tag in enumerate(self.tags, start=1):
             await page.type(css_selector, "#" + tag)
             await page.press(css_selector, "Space")
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.3)
         douyin_logger.info(f'总共添加{len(self.tags)}个话题')
 
         # 检查是否有"我知道了"按钮，如果有则点击
@@ -285,11 +285,12 @@ class DouYinVideo(object):
 
         await context.storage_state(path=self.account_file)  # 保存cookie
         douyin_logger.success('  [-]cookie更新完毕！')
-        douyin_logger.success('  [-]视频已成功发布，浏览器窗口将保持打开状态，请手动关闭')
-        await asyncio.sleep(3600)  # 保持浏览器打开 1 小时，方便手动操作
-        # 注释掉关闭代码，让浏览器保持打开
-        # await context.close()
-        # await browser.close()
+        douyin_logger.success('  [-]视频已成功发布，浏览器即将关闭')
+
+        # 关闭浏览器
+        await context.close()
+        await browser.close()
+        douyin_logger.info('  [-] 浏览器已关闭')
 
     async def handle_auto_video_cover(self, page):
         """

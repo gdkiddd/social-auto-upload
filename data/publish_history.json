@@ -1,5 +1,86 @@
 [
   {
+    "timestamp": "2026-01-23 20:12:38",
+    "platform_id": "tencent",
+    "platform_name": "视频号",
+    "video_file": "36岁不想上班, 跑个车假装今天上过班了.mp4",
+    "status": "success",
+    "account": "Amy",
+    "error_message": null
+  },
+  {
+    "timestamp": "2026-01-23 20:08:43",
+    "platform_id": "tencent",
+    "platform_name": "视频号",
+    "video_file": "36岁不想上班, 跑个车假装今天上过班了.mp4",
+    "status": "success",
+    "account": "Amy",
+    "error_message": null
+  },
+  {
+    "timestamp": "2026-01-23 20:02:50",
+    "platform_id": "tencent",
+    "platform_name": "视频号",
+    "video_file": "36岁不想上班, 跑个车假装今天上过班了.mp4",
+    "status": "success",
+    "account": "Amy",
+    "error_message": null
+  },
+  {
+    "timestamp": "2026-01-23 19:59:58",
+    "platform_id": "baijiahao",
+    "platform_name": "百家号",
+    "video_file": "36岁不想上班, 跑个车假装今天上过班了.mp4",
+    "status": "success",
+    "account": "Amy",
+    "error_message": null
+  },
+  {
+    "timestamp": "2026-01-23 19:58:47",
+    "platform_id": "kuaishou",
+    "platform_name": "快手",
+    "video_file": "36岁不想上班, 跑个车假装今天上过班了.mp4",
+    "status": "success",
+    "account": "Amy",
+    "error_message": null
+  },
+  {
+    "timestamp": "2026-01-23 19:58:12",
+    "platform_id": "douyin",
+    "platform_name": "抖音",
+    "video_file": "36岁不想上班, 跑个车假装今天上过班了.mp4",
+    "status": "success",
+    "account": "Amy",
+    "error_message": null
+  },
+  {
+    "timestamp": "2026-01-23 19:55:17",
+    "platform_id": "tencent",
+    "platform_name": "视频号",
+    "video_file": "36岁不想上班, 跑个车假装今天上过班了.mp4",
+    "status": "success",
+    "account": "Amy",
+    "error_message": null
+  },
+  {
+    "timestamp": "2026-01-23 19:52:18",
+    "platform_id": "tencent",
+    "platform_name": "视频号",
+    "video_file": "36岁不想上班, 跑个车假装今天上过班了.mp4",
+    "status": "success",
+    "account": "Amy",
+    "error_message": null
+  },
+  {
+    "timestamp": "2026-01-23 19:45:23",
+    "platform_id": "tencent",
+    "platform_name": "视频号",
+    "video_file": "36岁不想上班, 跑个车假装今天上过班了.mp4",
+    "status": "success",
+    "account": "Amy",
+    "error_message": null
+  },
+  {
     "timestamp": "2026-01-23 18:59:59",
     "platform_id": "bilibili",
     "platform_name": "Bilibili",

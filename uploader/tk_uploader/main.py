@@ -179,11 +179,12 @@ class TiktokVideo(object):
 
         await context.storage_state(path=f"{self.account_file}")  # save cookie
         tiktok_logger.info('  [-] update cookie！')
-        tiktok_logger.success('  [-]视频已成功发布，浏览器窗口将保持打开状态，请手动关闭')
-        await asyncio.sleep(3600)  # 保持浏览器打开 1 小时，方便手动操作
-        # 注释掉关闭代码，让浏览器保持打开
-        # await context.close()
-        # await browser.close()
+        tiktok_logger.success('  [-]视频已成功发布，浏览器即将关闭')
+
+        # 关闭浏览器
+        await context.close()
+        await browser.close()
+        tiktok_logger.info('  [-] 浏览器已关闭')
 
     async def add_title_tags(self, page):
 
@@ -210,10 +211,10 @@ class TiktokVideo(object):
         for index, tag in enumerate(self.tags, start=1):
             tiktok_logger.info("Setting the %s tag" % index)
             await page.keyboard.press("End")
-            await page.wait_for_timeout(1000)  # 等待1秒
+            await page.wait_for_timeout(300)  # 等待0.3秒
             await page.keyboard.insert_text("#" + tag + " ")
             await page.keyboard.press("Space")
-            await page.wait_for_timeout(1000)  # 等待1秒
+            await page.wait_for_timeout(300)  # 等待0.3秒
 
             await page.keyboard.press("Backspace")
             await page.keyboard.press("End")

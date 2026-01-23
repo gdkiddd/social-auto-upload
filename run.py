@@ -59,14 +59,6 @@ PLATFORMS = [
         'has_browser': True
     },
     {
-        'id': 'douyin',
-        'name': '抖音',
-        'cookie_file': 'douyin',
-        'script': 'examples/upload_video_to_douyin.py',
-        'login_script': 'examples/get_douyin_cookie.py',
-        'has_browser': True
-    },
-    {
         'id': 'kuaishou',
         'name': '快手',
         'cookie_file': 'kuaishou',
@@ -80,6 +72,14 @@ PLATFORMS = [
         'cookie_file': 'baijiahao',
         'script': 'examples/upload_video_to_baijiahao.py',
         'login_script': 'examples/get_baijiahao_cookie.py',
+        'has_browser': True
+    },
+    {
+        'id': 'douyin',
+        'name': '抖音',
+        'cookie_file': 'douyin',
+        'script': 'examples/upload_video_to_douyin.py',
+        'login_script': 'examples/get_douyin_cookie.py',
         'has_browser': True
     }
 ]
@@ -107,7 +107,7 @@ def check_cookie_exists(cookie_file_or_platform_id):
 
 
 def rename_video_files():
-    """重命名 txt 和 png 文件，使其与对应的 mp4 文件同名"""
+    """重命名 txt、png、jpg 等文件，使其与对应的 mp4 文件同名"""
     videos_dir = Path("videos")
     if not videos_dir.exists():
         return
@@ -116,11 +116,12 @@ def rename_video_files():
     if len(video_files) == 0:
         return
     elif len(video_files) == 1:
-        # 只有一个视频，把所有 txt 和 png 重命名为该视频的名字
+        # 只有一个视频，把所有 txt 和图片文件重命名为该视频的名字
         video_name = video_files[0].stem
         renamed_count = 0
 
-        for ext in ['*.txt', '*.png', '*.PNG']:
+        # 支持更多图片格式
+        for ext in ['*.txt', '*.png', '*.PNG', '*.jpg', '*.JPG', '*.jpeg', '*.JPEG']:
             matching_files = list(videos_dir.glob(ext))
 
             for file in matching_files:
@@ -147,7 +148,11 @@ def rename_video_files():
             possible_files = [
                 videos_dir / f"{video_name}.txt",
                 videos_dir / f"{video_name}.png",
-                videos_dir / f"{video_name}.PNG"
+                videos_dir / f"{video_name}.PNG",
+                videos_dir / f"{video_name}.jpg",
+                videos_dir / f"{video_name}.JPG",
+                videos_dir / f"{video_name}.jpeg",
+                videos_dir / f"{video_name}.JPEG"
             ]
 
             for file in possible_files:
@@ -422,8 +427,8 @@ def show_menu():
     print("请选择操作：")
     print()
 
-    # 选项1：执行所有
-    print("  [1] 执行所有平台")
+    # 选项1：全部上传
+    print("  [1] 全部上传")
 
     # 选项2-N：平台设置
     for i, platform in enumerate(PLATFORMS, start=2):
@@ -698,7 +703,7 @@ def set_schedule_time():
 
 def run_script_with_monitor(script_path, platform_info, schedule_time=None):
     """
-    运行脚本并监控浏览器窗口
+    运行脚本并监控浏览器窗口，实时输出日志
 
     Args:
         script_path: 脚本路径
@@ -728,29 +733,34 @@ def run_script_with_monitor(script_path, platform_info, schedule_time=None):
         except Exception as e:
             return False, f"发布出错: {str(e)}"
 
-    # 有浏览器的平台，需要监控窗口
+    # 有浏览器的平台，需要监控窗口并实时输出日志
     process = None
     try:
-        print(f"\n⏳ 正在启动 {platform_info['name']} 上传...")
-        print(f"💡 上传完成后请手动关闭浏览器窗口，程序会自动检测并继续")
-        print(f"   （如果浏览器窗口已关闭，程序将自动继续下一个平台）")
-
         # 启动进程
         process = subprocess.Popen(
             [sys.executable, str(script_path)],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            bufsize=1
+            bufsize=1,
+            universal_newlines=True
         )
 
-        # 监控进程
+        # 监控进程并实时输出
         start_time = time.time()
 
         while True:
+            # 实时读取输出
+            output = process.stdout.readline()
+            if output:
+                print(output.strip())
+
             # 检查进程是否结束
             if process.poll() is not None:
-                print(f"\n✅ {platform_info['name']} 上传进程已结束")
+                # 读取剩余的所有输出
+                remaining_output = process.stdout.read()
+                if remaining_output:
+                    print(remaining_output.strip())
                 break
 
             # 检查是否超时（30分钟）
@@ -762,8 +772,8 @@ def run_script_with_monitor(script_path, platform_info, schedule_time=None):
                     process.kill()
                 return False, "运行超时"
 
-            # 等待一段时间
-            time.sleep(2)
+            # 短暂等待，避免CPU占用过高
+            time.sleep(0.1)
 
         # 获取返回码
         return_code = process.returncode
@@ -954,35 +964,6 @@ def run_single_platform(platform, schedule_time=None):
         print(f"❌ 上传脚本不存在: {script_path}")
         input("\n按回车键继续...")
         return
-
-    # 显示视频文件信息
-    videos_dir = Path("videos")
-    if videos_dir.exists():
-        video_files = sorted(list(videos_dir.glob("*.mp4")))
-        if video_files:
-            print(f"\n📹 即将上传的视频:")
-            for i, video_file in enumerate(video_files, 1):
-                file_size = video_file.stat().st_size / (1024 * 1024)  # MB
-                txt_file = video_file.with_suffix('.txt')
-
-                print(f"\n  [{i}] {video_file.name} ({file_size:.1f} MB)")
-
-                # 读取并显示 txt 文件内容
-                if txt_file.exists():
-                    with open(txt_file, 'r', encoding='utf-8') as f:
-                        lines = f.read().strip().split('\n')
-
-                    if lines:
-                        print(f"      标题: {lines[0].strip()}")
-                        if len(lines) >= 2:
-                            print(f"      标签: {lines[1].strip()}")
-                        if len(lines) >= 3:
-                            desc_preview = lines[2].strip()[:50]
-                            if len(lines[2].strip()) > 50:
-                                desc_preview += "..."
-                            print(f"      描述: {desc_preview}")
-                else:
-                    print(f"      ⚠️  未找到对应的 txt 文件")
 
     print(f"\n⏳ 正在启动 {platform_name} 上传...")
     print(f"💡 上传完成后，请关闭浏览器窗口或等待完成")

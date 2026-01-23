@@ -159,7 +159,7 @@ class TencentVideo(object):
         )
         # 创建一个浏览器上下文，使用指定的 cookie 文件
         context = await browser.new_context(
-            viewport={"width": 1250, "height": 1250},
+            viewport={"width": 1500, "height": 1200},
             storage_state=f"{self.account_file}"
         )
         context = await set_init_script(context)
@@ -201,11 +201,12 @@ class TencentVideo(object):
 
         await context.storage_state(path=f"{self.account_file}")  # 保存cookie
         tencent_logger.success('  [-]cookie更新完毕！')
-        tencent_logger.success('  [-]视频已成功发布，浏览器窗口将保持打开状态，请手动关闭')
-        await asyncio.sleep(3600)  # 保持浏览器打开 1 小时，方便手动操作
-        # 注释掉关闭代码，让浏览器保持打开
-        # await context.close()
-        # await browser.close()
+        tencent_logger.success('  [-]视频已成功发布，浏览器即将关闭')
+
+        # 关闭浏览器
+        await context.close()
+        await browser.close()
+        tencent_logger.info('  [-] 浏览器已关闭')
 
     async def add_short_title(self, page):
         short_title_element = page.get_by_text("短标题", exact=True).locator("..").locator(
@@ -318,7 +319,7 @@ class TencentVideo(object):
         for index, tag in enumerate(self.tags, start=1):
             await page.keyboard.type("#" + tag)
             await page.keyboard.press("Space")
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.3)
         tencent_logger.info(f"成功添加hashtag: {len(self.tags)}")
 
     async def add_collection(self, page):
@@ -339,18 +340,69 @@ class TencentVideo(object):
         try:
             tencent_logger.info(f"  [-] 正在上传封面: {self.thumbnail_path.name}")
 
-            # 步骤1: 点击封面编辑框
-            tencent_logger.info("  [-] 步骤1: 点击封面编辑框...")
-            cover_edit_area = page.locator('div.vertical-img-wrap')
-            await cover_edit_area.click()
-            await asyncio.sleep(1)
+            # 等待封面预览加载完成
+            tencent_logger.info("  [-] 等待封面预览加载...")
+            await asyncio.sleep(2)
+
+            # 步骤1: 点击"编辑"按钮
+            tencent_logger.info("  [-] 步骤1: 查找并点击封面编辑按钮...")
+
+            # 尝试多个选择器来定位编辑按钮
+            edit_button = page.locator('div.edit-btn.edit-btn-zIndex')
+
+            # 等待编辑按钮出现（最多等待10秒）
+            try:
+                await edit_button.first.wait_for(state='visible', timeout=10000)
+                tencent_logger.info("  [-] 找到编辑按钮，正在点击...")
+
+                # 使用 force=True 强制点击，因为按钮可能被图片遮挡
+                try:
+                    await edit_button.first.click(force=True)
+                    tencent_logger.success("  [-] 已点击编辑按钮（force=True）")
+                except:
+                    # 如果 force=True 也失败，使用 JavaScript 直接点击
+                    tencent_logger.warning("  [-] 强制点击失败，使用 JavaScript 点击...")
+                    await edit_button.first.evaluate('el => el.click()')
+                    tencent_logger.success("  [-] 已点击编辑按钮（JavaScript）")
+
+                await asyncio.sleep(1)
+            except:
+                # 备用方案：尝试其他选择器
+                tencent_logger.warning("  [-] 未找到编辑按钮（选择器1），尝试其他方式...")
+                edit_button_alt = page.locator('div[class*="edit-btn"]')
+
+                if await edit_button_alt.count() > 0:
+                    tencent_logger.info("  [-] 使用备用选择器找到编辑按钮")
+                    try:
+                        await edit_button_alt.first.click(force=True)
+                    except:
+                        await edit_button_alt.first.evaluate('el => el.click()')
+                    tencent_logger.success("  [-] 已点击编辑按钮")
+                    await asyncio.sleep(1)
+                else:
+                    # 最后备用方案：点击封面区域
+                    tencent_logger.warning("  [-] 仍未找到编辑按钮，尝试点击封面区域...")
+                    cover_edit_area = page.locator('div.vertical-img-wrap')
+                    if await cover_edit_area.count() > 0:
+                        await cover_edit_area.click()
+                        tencent_logger.success("  [-] 已点击封面区域")
+                        await asyncio.sleep(1)
+                    else:
+                        tencent_logger.error("  ❌ 未找到封面编辑区域，跳过封面上传")
+                        return
 
             # 步骤2: 点击"上传封面"按钮，并等待文件选择器
             tencent_logger.info("  [-] 步骤2: 点击'上传封面'按钮...")
             upload_thumbnail_button = page.locator('div.wrap:has-text("上传封面")')
 
+            # 等待上传封面按钮出现
+            try:
+                await upload_thumbnail_button.first.wait_for(state='visible', timeout=5000)
+            except:
+                tencent_logger.warning("  [-] 等待'上传封面'按钮超时，继续尝试...")
+
             # 使用 Playwright 的 file chooser API
-            async with page.expect_file_chooser() as fc_info:
+            async with page.expect_file_chooser(timeout=10000) as fc_info:
                 await upload_thumbnail_button.click()
 
             file_chooser = await fc_info.value
@@ -363,9 +415,9 @@ class TencentVideo(object):
             # 步骤3: 点击确认按钮
             tencent_logger.info("  [-] 步骤3: 等待确认按钮出现...")
 
-            # 等待确认按钮出现（最多等待5秒）
+            # 等待确认按钮出现（最多等待10秒）
             try:
-                await page.wait_for_selector('button.weui-desktop-btn.weui-desktop-btn_primary.weui-desktop-btn_mini:has-text("确认")', timeout=5000)
+                await page.wait_for_selector('button.weui-desktop-btn.weui-desktop-btn_primary.weui-desktop-btn_mini:has-text("确认")', timeout=10000)
                 tencent_logger.info("  [-] 确认按钮已出现")
             except:
                 tencent_logger.warning("  ⚠️  等待确认按钮超时，尝试直接点击")

@@ -216,7 +216,7 @@ class KSVideo(object):
 
         browser = await playwright.chromium.launch(**launch_options)
         context = await browser.new_context(
-            viewport={"width": 1250, "height": 1250},
+            viewport={"width": 1500, "height": 1200},
             storage_state=f"{self.account_file}"
         )
         context = await set_init_script(context)
@@ -263,7 +263,7 @@ class KSVideo(object):
         for index, tag in enumerate(self.tags[:3], start=1):
             kuaishou_logger.info("正在添加第%s个话题" % index)
             await page.keyboard.type(f"#{tag} ")
-            await asyncio.sleep(2)
+            await asyncio.sleep(0.3)
 
         max_retries = 60  # 设置最大重试次数,最大等待时间为 2 分钟
         retry_count = 0
@@ -331,8 +331,12 @@ class KSVideo(object):
 
         await context.storage_state(path=self.account_file)  # 保存cookie
         kuaishou_logger.info('cookie更新完毕！')
-        kuaishou_logger.success('  [-]视频已成功发布，浏览器窗口将保持打开状态，请手动关闭')
-        await asyncio.sleep(3600)  # 保持浏览器打开 1 小时，方便手动操作
+        kuaishou_logger.success('  [-]视频已成功发布，浏览器即将关闭')
+
+        # 关闭浏览器
+        await context.close()
+        await browser.close()
+        kuaishou_logger.info('  [-] 浏览器已关闭')
 
     async def main(self):
         async with async_playwright() as playwright:

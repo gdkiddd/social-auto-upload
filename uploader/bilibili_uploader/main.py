@@ -39,7 +39,7 @@ class BilibiliUploader(object):
 
       # 创建浏览器上下文，使用 cookie 文件
       context = await browser.new_context(
-        viewport={"width": 1250, "height": 1250},
+        viewport={"width": 1500, "height": 1200},
         storage_state=f"{self.account_file}"
       )
       context = await set_init_script(context)
@@ -139,12 +139,10 @@ class BilibiliUploader(object):
       await context.storage_state(path=self.account_file)
       bilibili_logger.success('   ✅ Cookie 已更新')
 
-      # 保持浏览器打开一段时间，方便手动操作
-      bilibili_logger.info('   💡 浏览器将保持打开 5 分钟，方便手动操作')
-      await asyncio.sleep(300)
-
+      # 关闭浏览器
       await context.close()
       await browser.close()
+      bilibili_logger.info('   [-] 浏览器已关闭')
 
       return True
 
@@ -217,10 +215,10 @@ class BilibiliUploader(object):
       if await tag_input.count() > 0:
         for tag in self.tags:
           await tag_input.first.fill(tag)
-          await asyncio.sleep(0.5)
+          await asyncio.sleep(0.3)
           # 按回车确认标签
           await page.keyboard.press('Enter')
-          await asyncio.sleep(0.5)
+          await asyncio.sleep(0.3)
         await asyncio.sleep(self.step_delay)
       else:
         bilibili_logger.warning('   [-] 未找到标签输入框')
