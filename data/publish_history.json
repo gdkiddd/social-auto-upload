@@ -1,5 +1,14 @@
 [
   {
+    "timestamp": "2026-01-23 18:59:59",
+    "platform_id": "bilibili",
+    "platform_name": "Bilibili",
+    "video_file": "跑滴滴给自己和老公交社保的一天.mp4",
+    "status": "success",
+    "account": "KIDDD",
+    "error_message": null
+  },
+  {
     "timestamp": "2026-01-23 17:22:07",
     "platform_id": "douyin",
     "platform_name": "抖音",

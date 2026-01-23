@@ -246,6 +246,23 @@ class DouYinVideo(object):
                 publish_button = page.get_by_role('button', name="发布", exact=True)
                 if await publish_button.count():
                     await publish_button.click()
+
+                # 检查是否出现"接受短信验证码"弹窗
+                await asyncio.sleep(1)
+                verify_code_popup = page.locator('div:has(p.uc-ui-typography_description:has-text("获取验证码"))')
+                if await verify_code_popup.count() > 0:
+                    douyin_logger.warning("  [-] 检测到短信验证码弹窗")
+                    # 点击"获取验证码"按钮
+                    get_code_button = page.locator('div.uc-ui-input_right p.uc-ui-typography_description:has-text("获取验证码")')
+                    if await get_code_button.count() > 0:
+                        await get_code_button.first.click()
+                        douyin_logger.info("  [-] 已点击获取验证码")
+                        douyin_logger.warning("  [-] 请手动输入验证码以继续发布")
+                        # 等待用户手动输入验证码
+                        await asyncio.sleep(30)  # 等待30秒让用户输入
+                    else:
+                        douyin_logger.warning("  [-] 未找到获取验证码按钮")
+
                 await page.wait_for_url("https://creator.douyin.com/creator-micro/content/manage**",
                                         timeout=3000)  # 如果自动跳转到作品页面，则代表发布成功
                 douyin_logger.success("  [-]视频发布成功")
