@@ -27,6 +27,7 @@ from myUtils.account_manager import (
     ensure_default_account, migrate_old_cookies
 )
 from myUtils.publish_history import get_publish_history
+from myUtils.video_project import get_video_project_dir, get_video_files_from_project
 
 # 确保默认账号存在
 ensure_default_account()
@@ -108,11 +109,11 @@ def check_cookie_exists(cookie_file_or_platform_id):
 
 def rename_video_files():
     """重命名 txt、png、jpg 等文件，使其与对应的 mp4 文件同名"""
-    videos_dir = Path("videos")
-    if not videos_dir.exists():
+    project_dir = get_video_project_dir()
+    if project_dir is None:
         return
 
-    video_files = list(videos_dir.glob("*.mp4"))
+    video_files = list(project_dir.glob("*.mp4"))
     if len(video_files) == 0:
         return
     elif len(video_files) == 1:
@@ -122,12 +123,12 @@ def rename_video_files():
 
         # 支持更多图片格式
         for ext in ['*.txt', '*.png', '*.PNG', '*.jpg', '*.JPG', '*.jpeg', '*.JPEG']:
-            matching_files = list(videos_dir.glob(ext))
+            matching_files = list(project_dir.glob(ext))
 
             for file in matching_files:
                 # 如果文件不是对应的同名文件
                 if file.stem != video_name:
-                    new_name = videos_dir / f"{video_name}{file.suffix}"
+                    new_name = project_dir / f"{video_name}{file.suffix}"
                     try:
                         file.rename(new_name)
                         renamed_count += 1
@@ -146,13 +147,13 @@ def rename_video_files():
 
             # 查找可能匹配的文件（相同基础名称但不同扩展名）
             possible_files = [
-                videos_dir / f"{video_name}.txt",
-                videos_dir / f"{video_name}.png",
-                videos_dir / f"{video_name}.PNG",
-                videos_dir / f"{video_name}.jpg",
-                videos_dir / f"{video_name}.JPG",
-                videos_dir / f"{video_name}.jpeg",
-                videos_dir / f"{video_name}.JPEG"
+                project_dir / f"{video_name}.txt",
+                project_dir / f"{video_name}.png",
+                project_dir / f"{video_name}.PNG",
+                project_dir / f"{video_name}.jpg",
+                project_dir / f"{video_name}.JPG",
+                project_dir / f"{video_name}.jpeg",
+                project_dir / f"{video_name}.JPEG"
             ]
 
             for file in possible_files:
@@ -170,15 +171,21 @@ def show_video_info():
     print("📹 即将上传的视频")
     print("=" * 60)
 
-    videos_dir = Path("videos")
-    if not videos_dir.exists():
-        print("⚠️  videos/ 目录不存在")
+    project_dir = get_video_project_dir()
+
+    if project_dir is None:
+        print("⚠️  videos/ 目录下没有找到视频项目")
+        print("💡 请在 videos/ 目录下创建一个文件夹（如 '项目1'），放入视频文件")
         print()
         return
 
-    video_files = sorted(list(videos_dir.glob("*.mp4")))
+    print(f"📁 项目目录: {project_dir.name}")
+    print()
+
+    video_files = get_video_files_from_project(project_dir)
+
     if not video_files:
-        print("⚠️  videos/ 目录下没有视频文件")
+        print(f"⚠️  项目目录下没有找到视频文件 (.mp4)")
         print()
         return
 
@@ -479,19 +486,20 @@ def get_schedule_time_config():
 
 def edit_video_info():
     """修改视频标题和标签"""
-    videos_dir = Path("videos")
-    if not videos_dir.exists():
-        print("\n❌ videos/ 目录不存在")
+    project_dir = get_video_project_dir()
+
+    if project_dir is None:
+        print("\n❌ videos/ 目录下没有找到视频项目")
         return
 
-    video_files = sorted(list(videos_dir.glob("*.mp4")))
+    video_files = get_video_files_from_project(project_dir)
     if not video_files:
-        print("\n❌ videos/ 目录下没有视频文件")
+        print("\n❌ 项目目录下没有视频文件")
         return
 
     # 显示视频列表
     print("\n" + "=" * 60)
-    print("📝 选择要修改的视频")
+    print(f"📝 选择要修改的视频 (项目: {project_dir.name})")
     print("=" * 60)
 
     for i, video_file in enumerate(video_files, 1):
@@ -516,8 +524,6 @@ def edit_video_info():
 
     video_file = video_files[video_index]
     txt_file = video_file.with_suffix('.txt')
-    png_file = video_file.with_suffix('.png')
-    png_file_cap = video_file.with_suffix('.PNG')
 
     # 读取当前内容
     current_title = ""
@@ -841,16 +847,19 @@ def run_all_platforms(schedule_time=None):
         print(f"⏰ 发布方式: 立即发布")
     print("=" * 60)
 
-    # 检查视频目录
-    videos_dir = Path("videos")
-    if not videos_dir.exists():
-        print("❌ videos/ 目录不存在")
-        print("请先创建 videos/ 目录并放入视频文件")
+    # 获取当前视频项目
+    project_dir = get_video_project_dir()
+
+    if project_dir is None:
+        print("❌ videos/ 目录下没有找到视频项目")
+        print("💡 请在 videos/ 目录下创建一个文件夹（如 '项目1'），放入视频文件")
         return
 
-    video_files = list(videos_dir.glob("*.mp4"))
+    print(f"📁 当前项目: {project_dir.name}")
+
+    video_files = get_video_files_from_project(project_dir)
     if not video_files:
-        print("❌ videos/ 目录下没有视频文件")
+        print("❌ 项目目录下没有找到视频文件 (.mp4)")
         return
 
     print(f"✅ 找到 {len(video_files)} 个视频文件")

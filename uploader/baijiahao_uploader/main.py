@@ -11,9 +11,10 @@ from conf import LOCAL_CHROME_PATH, LOCAL_CHROME_HEADLESS, get_step_delay
 from utils.base_social_media import set_init_script
 from utils.log import baijiahao_logger
 from utils.network import async_retry
-from myUtils.publish_history import get_publish_history
 from myUtils.account_manager import get_current_account
 from pathlib import Path
+# 引入通用工具模块
+from uploader.common import find_cover_image, record_publish_history
 
 
 async def baijiahao_cookie_gen(account_file):
@@ -232,14 +233,12 @@ class BaiJiaHaoVideo(object):
             pass
 
         baijiahao_logger.success("视频发布成功")
-        # 记录发布历史
-        publish_history = get_publish_history()
-        publish_history.add_record(
+        # 使用通用工具记录发布历史
+        record_publish_history(
             platform_id='baijiahao',
             platform_name='百家号',
-            video_file=Path(self.file_path).name,
-            status='success',
-            account=get_current_account()
+            video_file_path=self.file_path,
+            status='success'
         )
 
         await context.storage_state(path=self.account_file)  # 保存cookie
@@ -339,27 +338,8 @@ class BaiJiaHaoVideo(object):
             await cover_wrapper.click()
             await asyncio.sleep(self.step_delay)
 
-            # 查找封面图片
-            video_file = Path(self.file_path)
-            cover_extensions = ['.png', '.PNG', '.jpg', '.jpeg', '.JPG', '.JPEG']
-            cover_file = None
-
-            for ext in cover_extensions:
-                potential_cover = video_file.with_suffix(ext)
-                if potential_cover.exists():
-                    cover_file = potential_cover
-                    break
-
-            if not cover_file:
-                # 如果找不到同名的封面图，尝试查找 videos 目录下的第一个图片
-                videos_dir = Path("videos")
-                if videos_dir.exists():
-                    image_patterns = ['*.png', '*.PNG', '*.jpg', '*.jpeg', '*.JPG', '*.JPEG']
-                    for pattern in image_patterns:
-                        images = list(videos_dir.glob(pattern))
-                        if images:
-                            cover_file = images[0]
-                            break
+            # 使用通用工具查找封面图片
+            cover_file = find_cover_image(self.file_path)
 
             if not cover_file:
                 baijiahao_logger.info("  [-] 未找到封面图片，跳过封面设置")

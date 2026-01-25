@@ -3,6 +3,7 @@ from pathlib import Path
 
 from conf import BASE_DIR
 from myUtils.account_manager import get_current_account, get_account_cookie_path
+from myUtils.video_project import get_video_project_files
 from uploader.ks_uploader.main import ks_setup, KSVideo
 from utils.files_times import generate_schedule_time_next_day, get_title_and_hashtags
 
@@ -10,7 +11,6 @@ from utils.files_times import generate_schedule_time_next_day, get_title_and_has
 if __name__ == '__main__':
     from conf import load_config
 
-    filepath = Path(BASE_DIR) / "videos"
     current_account = get_current_account()
     account_file = get_account_cookie_path(current_account, 'kuaishou')
 
@@ -28,10 +28,8 @@ if __name__ == '__main__':
         print("⏰ 立即发布模式")
         publish_datetimes = [0]  # 0 表示立即发布
 
-    # 获取视频目录
-    folder_path = Path(filepath)
-    # 获取文件夹中的所有文件
-    files = list(folder_path.glob("*.mp4"))
+    # 获取视频项目文件（使用通用函数）
+    project_dir, files = get_video_project_files()
     file_num = len(files)
 
     cookie_setup = asyncio.run(ks_setup(account_file, handle=False))

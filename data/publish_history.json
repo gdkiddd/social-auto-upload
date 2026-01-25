@@ -1,5 +1,14 @@
 [
   {
+    "timestamp": "2026-01-24 17:09:05",
+    "platform_id": "tencent",
+    "platform_name": "视频号",
+    "video_file": "养老式工作 36岁开滴滴帮老公交社保.mp4",
+    "status": "success",
+    "account": "Amy",
+    "error_message": null
+  },
+  {
     "timestamp": "2026-01-23 20:12:38",
     "platform_id": "tencent",
     "platform_name": "视频号",

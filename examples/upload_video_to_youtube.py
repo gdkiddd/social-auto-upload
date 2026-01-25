@@ -1,21 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bilibili 视频上传脚本
+YouTube 视频上传脚本
 支持从 txt 文件读取标题、标签和完整描述
 """
 
 import time
-import json
 import asyncio
 from pathlib import Path
 
-from uploader.bilibili_uploader.main import BilibiliUploader
+from uploader.youtube_uploader.main import YouTubeUploader
 from conf import BASE_DIR
 from myUtils.account_manager import get_current_account, get_account_cookie_path
 from myUtils.video_project import get_video_project_files
-from utils.constant import VideoZoneTypes
-from utils.files_times import generate_schedule_time_next_day
 
 
 def get_video_info(video_file):
@@ -82,52 +79,27 @@ def get_video_info(video_file):
   return title, tags, description
 
 
-def load_config():
-  """加载全局配置"""
-  config_file = BASE_DIR / "config.json"
-  if config_file.exists():
-    with open(config_file, 'r', encoding='utf-8') as f:
-      return json.load(f)
-  return {}
-
-
-async def upload_single_video(bili_uploader):
+async def upload_single_video(youtube_uploader):
   """上传单个视频的异步包装函数"""
-  return await bili_uploader.upload()
+  return await youtube_uploader.upload()
 
 
 if __name__ == '__main__':
-  # 加载全局配置
-  config = load_config()
-
+  # 获取当前账号
   current_account = get_current_account()
-  account_file = get_account_cookie_path(current_account, 'bilibili')
+  account_file = get_account_cookie_path(current_account, 'youtube')
 
   if not account_file.exists():
     print(f"❌ {account_file.name} 配置文件不存在")
-    print(f"请先运行: ./bilibili_login.sh")
-    exit()
-
-  # 从配置读取视频分区，默认为知识分区
-  tid = config.get('bilibili_tid', VideoZoneTypes.KNOWLEDGE.value)
+    print(f"请先运行: python examples/get_youtube_cookie.py")
+    exit(1)
 
   # 获取视频项目文件（使用通用函数）
   project_dir, files = get_video_project_files()
   file_num = len(files)
 
-  # 从配置读取是否定时发布，默认为立即发布
-  use_schedule = config.get('bilibili_schedule', False)
-
-  if use_schedule:
-    timestamps = generate_schedule_time_next_day(file_num, 1, daily_times=[16], timestamps=True)
-    print(f"发布方式: 定时发布（第二天 16:00）")
-  else:
-    timestamps = [0] * file_num  # 立即发布
-    print(f"发布方式: 立即发布")
-
-  print(f"=== Bilibili 视频上传 ===")
+  print(f"=== YouTube 视频上传 ===")
   print(f"找到 {file_num} 个视频文件")
-  print(f"视频分区: tid={tid}")
   print("=" * 60)
   print()
 
@@ -138,6 +110,27 @@ if __name__ == '__main__':
     # 读取视频信息
     title, tags, desc = get_video_info(file)
 
+    # 查找封面图片
+    video_file = Path(file)
+    cover_extensions = ['.png', '.PNG', '.jpg', '.jpeg', '.JPG', '.JPEG']
+    cover_file = None
+
+    for ext in cover_extensions:
+      potential_cover = video_file.with_suffix(ext)
+      if potential_cover.exists():
+        cover_file = potential_cover
+        break
+
+    if not cover_file:
+      # 如果找不到同名的封面图，尝试查找视频文件所在目录下的第一个图片
+      video_dir = video_file.parent
+      image_patterns = ['*.png', '*.PNG', '*.jpg', '*.jpeg', '*.JPG', '*.JPEG']
+      for pattern in image_patterns:
+        images = list(video_dir.glob(pattern))
+        if images:
+          cover_file = images[0]
+          break
+
     print(f"\n{'=' * 60}")
     print(f"📹 视频 {index + 1}/{file_num}")
     print(f"{'=' * 60}")
@@ -145,25 +138,24 @@ if __name__ == '__main__':
     print(f"   大小: {file.stat().st_size / (1024*1024):.1f} MB")
     print(f"   标题: {title}")
     print(f"   标签: {', '.join(tags) if tags else '无'}")
-    print(f"   描述: {desc[:50]}..." if len(desc) > 50 else f"   描述: {desc}")
+    print(f"   封面: {cover_file.name if cover_file else '无'}")
     print(f"{'=' * 60}")
     print()
 
     # 创建上传实例并上传
-    bili_uploader = BilibiliUploader(
+    youtube_uploader = YouTubeUploader(
       account_file=account_file,
       file=file,
       title=title,
       desc=desc,
-      tid=tid,
       tags=tags,
-      dtime=timestamps[index]
+      thumbnail_path=cover_file
     )
 
     upload_success = False
     try:
       # 使用 asyncio 运行异步上传
-      upload_success = asyncio.run(upload_single_video(bili_uploader))
+      upload_success = asyncio.run(upload_single_video(youtube_uploader))
       if not upload_success:
         print(f"❌ {file.name} 上传失败，请查看上方错误信息")
         failed_count += 1
@@ -191,10 +183,7 @@ if __name__ == '__main__':
   print(f"失败: {failed_count} 个")
   print(f"总计: {file_num} 个")
   print("=" * 60)
-  print(f"注: Bilibili 现在使用浏览器自动化方式上传")
   print()
-  print("🔗 查看上传结果: https://member.bilibili.com/platform/upload-manager/article")
-  print("=" * 60)
 
   # 根据结果返回不同的退出码
   if failed_count > 0:

@@ -8,6 +8,7 @@ import json
 import pathlib
 from pathlib import Path
 from myUtils.account_manager import get_current_account, get_account_cookie_path
+from myUtils.video_project import get_video_project_dir, get_video_files_from_project
 from uploader.bilibili_uploader.main import read_cookie_json_file, extract_keys_from_json
 
 def check_bilibili_status():
@@ -109,9 +110,10 @@ def check_bilibili_status():
 
         # 7. 检查视频文件
         print("📹 检查视频文件...")
-        videos_dir = Path("videos")
-        if videos_dir.exists():
-            video_files = list(videos_dir.glob("*.mp4"))
+        project_dir = get_video_project_dir()
+        if project_dir:
+            print(f"   ✅ 找到视频项目目录: {project_dir.name}")
+            video_files = get_video_files_from_project(project_dir)
             if video_files:
                 print(f"   ✅ 找到 {len(video_files)} 个视频文件")
                 for video in video_files[:3]:  # 只显示前3个
@@ -120,9 +122,10 @@ def check_bilibili_status():
                 if len(video_files) > 3:
                     print(f"      ... 还有 {len(video_files) - 3} 个文件")
             else:
-                print("   ⚠️  videos 目录下没有 .mp4 文件")
+                print("   ⚠️  项目目录下没有 .mp4 文件")
         else:
-            print("   ❌ videos 目录不存在")
+            print("   ⚠️  videos/ 目录下没有找到视频项目")
+            print("   💡 请在 videos/ 目录下创建一个文件夹（如 '项目1'），放入视频文件")
 
         print()
 

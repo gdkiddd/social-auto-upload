@@ -5,6 +5,7 @@ from time import sleep
 from xhs import XhsClient
 
 from conf import BASE_DIR
+from myUtils.video_project import get_video_project_files
 from utils.files_times import generate_schedule_time_next_day, get_title_and_hashtags
 from uploader.xhs_uploader.main import sign_local, beauty_print
 
@@ -13,11 +14,8 @@ config.read(Path(BASE_DIR / "uploader" / "xhs_uploader" / "accounts.ini"))
 
 
 if __name__ == '__main__':
-    filepath = Path(BASE_DIR) / "videos"
-    # 获取视频目录
-    folder_path = Path(filepath)
-    # 获取文件夹中的所有文件
-    files = list(folder_path.glob("*.mp4"))
+    # 获取视频项目文件（使用通用函数）
+    project_dir, files = get_video_project_files()
     file_num = len(files)
 
     cookies = config['account1']['cookies']

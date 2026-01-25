@@ -11,15 +11,15 @@
     "status": "success",
     "message": "发布成功"
   },
-  "douyin": {
-    "status": "success",
-    "message": "发布成功"
-  },
   "kuaishou": {
     "status": "success",
     "message": "发布成功"
   },
   "baijiahao": {
+    "status": "success",
+    "message": "发布成功"
+  },
+  "douyin": {
     "status": "success",
     "message": "发布成功"
   }
