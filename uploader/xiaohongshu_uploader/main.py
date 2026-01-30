@@ -11,6 +11,8 @@ from utils.log import xiaohongshu_logger
 from myUtils.publish_history import get_publish_history
 from myUtils.account_manager import get_current_account
 from pathlib import Path
+# 引入通用工具模块
+from uploader.common import find_cover_image, record_publish_history, wait_for_upload_with_progress
 
 
 async def cookie_auth(account_file):
@@ -145,16 +147,22 @@ class XiaoHongShuVideo(object):
         # 点击 "上传视频" 按钮
         await page.locator("div[class^='upload-content'] input[class='upload-input']").set_input_files(self.file_path)
 
-        # 等待页面跳转到指定的 URL 2025.01.08修改在原有基础上兼容两种页面
-        while True:
+        # 使用通用上传进度监控模块
+        # 小红书的上传完成标志：在stage元素中包含"上传成功"文本
+        xiaohongshu_logger.info("  [-] 等待视频上传...")
+
+        wait_time = 0
+        max_wait_time = 600  # 最大等待10分钟
+        last_progress = 0
+
+        while wait_time < max_wait_time:
             try:
-                # 等待upload-input元素出现
+                # 检查小红书特有的上传完成标志
                 upload_input = await page.wait_for_selector('input.upload-input', timeout=3000)
-                # 获取下一个兄弟元素
                 preview_new = await upload_input.query_selector(
                     'xpath=following-sibling::div[contains(@class, "preview-new")]')
+
                 if preview_new:
-                    # 在preview-new元素中查找包含"上传成功"的stage元素
                     stage_elements = await preview_new.query_selector_all('div.stage')
                     upload_success = False
                     for stage in stage_elements:
@@ -162,17 +170,30 @@ class XiaoHongShuVideo(object):
                         if '上传成功' in text_content:
                             upload_success = True
                             break
+
                     if upload_success:
-                        xiaohongshu_logger.info("[+] 检测到上传成功标识!")
-                        break  # 成功检测到上传成功后跳出循环
-                    else:
-                        print("  [-] 未找到上传成功标识，继续等待...")
-                else:
-                    print("  [-] 未找到预览元素，继续等待...")
-                    await asyncio.sleep(1)
+                        xiaohongshu_logger.success("  [-] 视频上传成功!")
+                        break
+
+                # 尝试获取上传进度
+                progress = await self._get_upload_progress(page)
+                if progress and progress != last_progress:
+                    xiaohongshu_logger.info(f'  📊 上传进度: {progress}%')
+                    last_progress = progress
+
+                xiaohongshu_logger.info("  [-] 正在上传视频中...")
+                await asyncio.sleep(2)
+                wait_time += 2
+
             except Exception as e:
-                print(f"  [-] 检测过程出错: {str(e)}，重新尝试...")
-                await asyncio.sleep(0.5)  # 等待0.5秒后重新尝试
+                xiaohongshu_logger.info(f"  [-] 检测过程出错: {str(e)}，重新尝试...")
+                await asyncio.sleep(1)
+                wait_time += 1
+
+    async def _get_upload_progress(self, page: Page):
+        """获取小红书上传进度"""
+        from uploader.common import get_upload_progress
+        return await get_upload_progress(page)
 
         # 填充标题和话题
         # 检查是否存在包含输入框的元素

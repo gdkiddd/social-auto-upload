@@ -11,7 +11,7 @@ from utils.log import douyin_logger
 from myUtils.account_manager import get_current_account
 from pathlib import Path
 # 引入通用工具模块
-from uploader.common import find_cover_image, record_publish_history, init_browser_context
+from uploader.common import find_cover_image, record_publish_history, init_browser_context, wait_for_upload_with_progress
 
 
 async def cookie_auth(account_file):
@@ -194,24 +194,25 @@ class DouYinVideo(object):
         except:
             pass
 
-        while True:
-            # 判断重新上传按钮是否存在，如果不存在，代表视频正在上传，则等待
-            try:
-                #  新版：定位重新上传
-                number = await page.locator('[class^="long-card"] div:has-text("重新上传")').count()
-                if number > 0:
-                    douyin_logger.success("  [-]视频上传完毕")
-                    break
-                else:
-                    douyin_logger.info("  [-] 正在上传视频中...")
-                    await asyncio.sleep(2)
+        # 使用通用上传进度监控模块
+        await wait_for_upload_with_progress(
+            page=page,
+            logger=douyin_logger,
+            complete_indicators=[
+                '[class^="long-card"] div:has-text("重新上传")',  # 抖音的上传完成标志
+            ],
+            check_interval=2,
+            max_wait_time=600,
+            progress_prefix="📊 上传进度"
+        )
 
-                    if await page.locator('div.progress-div > div:has-text("上传失败")').count():
-                        douyin_logger.error("  [-] 发现上传出错了... 准备重试")
-                        await self.handle_upload_error(page)
-            except:
-                douyin_logger.info("  [-] 正在上传视频中...")
-                await asyncio.sleep(2)
+        # 检查是否有上传失败的情况
+        try:
+            if await page.locator('div.progress-div > div:has-text("上传失败")').count():
+                douyin_logger.error("  [-] 发现上传出错了... 准备重试")
+                await self.handle_upload_error(page)
+        except:
+            pass
 
         if self.productLink and self.productTitle:
             douyin_logger.info(f'  [-] 正在设置商品链接...')

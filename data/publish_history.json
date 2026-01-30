@@ -1,5 +1,59 @@
 [
   {
+    "timestamp": "2026-01-30 14:31:49",
+    "platform_id": "douyin",
+    "platform_name": "抖音",
+    "video_file": "36岁没上过班 跑滴滴赚窝囊费的一天.mp4",
+    "status": "success",
+    "account": "Amy",
+    "error_message": null
+  },
+  {
+    "timestamp": "2026-01-30 14:25:18",
+    "platform_id": "tencent",
+    "platform_name": "视频号",
+    "video_file": "36岁没上过班 跑滴滴赚窝囊费的一天.mp4",
+    "status": "success",
+    "account": "Amy",
+    "error_message": null
+  },
+  {
+    "timestamp": "2026-01-30 14:19:39",
+    "platform_id": "douyin",
+    "platform_name": "抖音",
+    "video_file": "36岁没上过班 跑滴滴赚窝囊费的一天.mp4",
+    "status": "success",
+    "account": "Amy",
+    "error_message": null
+  },
+  {
+    "timestamp": "2026-01-30 14:02:14",
+    "platform_id": "baijiahao",
+    "platform_name": "百家号",
+    "video_file": "36岁没上过班 跑滴滴赚窝囊费的一天.mp4",
+    "status": "success",
+    "account": "Amy",
+    "error_message": null
+  },
+  {
+    "timestamp": "2026-01-30 13:59:46",
+    "platform_id": "kuaishou",
+    "platform_name": "快手",
+    "video_file": "36岁没上过班 跑滴滴赚窝囊费的一天.mp4",
+    "status": "success",
+    "account": "Amy",
+    "error_message": null
+  },
+  {
+    "timestamp": "2026-01-26 15:58:46",
+    "platform_id": "tencent",
+    "platform_name": "视频号",
+    "video_file": "又是开滴滴给老公交社保的一天.mp4",
+    "status": "success",
+    "account": "Amy",
+    "error_message": null
+  },
+  {
     "timestamp": "2026-01-24 17:09:05",
     "platform_id": "tencent",
     "platform_name": "视频号",

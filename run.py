@@ -44,14 +44,6 @@ PLATFORMS = [
         'has_browser': True
     },
     {
-        'id': 'tencent',
-        'name': '视频号',
-        'cookie_file': 'tencent',
-        'script': 'examples/upload_video_to_tencent.py',
-        'login_script': 'examples/get_tencent_cookie.py',
-        'has_browser': True
-    },
-    {
         'id': 'bilibili',
         'name': 'Bilibili',
         'cookie_file': 'bilibili',
@@ -81,6 +73,14 @@ PLATFORMS = [
         'cookie_file': 'douyin',
         'script': 'examples/upload_video_to_douyin.py',
         'login_script': 'examples/get_douyin_cookie.py',
+        'has_browser': True
+    },
+    {
+        'id': 'tencent',
+        'name': '视频号',
+        'cookie_file': 'tencent',
+        'script': 'examples/upload_video_to_tencent.py',
+        'login_script': 'examples/get_tencent_cookie.py',
         'has_browser': True
     }
 ]
@@ -322,14 +322,18 @@ def show_platform_settings(platform):
         # 获取当前状态
         has_cookie = check_cookie_exists(platform_id)
         is_enabled = is_platform_enabled(platform_id)
+        from conf import is_chrome_headless
+        is_headless = is_chrome_headless()
 
         print(f"Cookie 状态: {'✅ 已登录' if has_cookie else '❌ 未登录'}")
         print(f"上传开关: {'✅ 已启用' if is_enabled else '❌ 已禁用'}")
+        print(f"浏览器模式: {'🔇 后台运行' if is_headless else '🪟 显示窗口'}")
         print()
         print("请选择操作：")
         print("  [1] 立即上传")
         print("  [2] 开启/关闭上传")
-        print("  [3] 重登录")
+        print("  [3] 切换浏览器模式")
+        print("  [4] 重登录")
         print()
         print("  [0] 返回")
         print("=" * 60)
@@ -366,6 +370,17 @@ def show_platform_settings(platform):
                 print(f"\n❌ 保存配置失败")
 
         elif choice == '3':
+            # 切换浏览器headless模式
+            from conf import set_chrome_headless
+            new_headless = not is_headless
+
+            if set_chrome_headless(new_headless):
+                print(f"\n✅ 浏览器模式已切换为: {'🔇 后台运行' if new_headless else '🪟 显示窗口'}")
+                print(f"💡 配置已保存，下次上传时生效")
+            else:
+                print(f"\n❌ 保存配置失败")
+
+        elif choice == '4':
             # 登录/重新登录
             login_script = platform.get('login_script')
             if login_script and Path(login_script).exists():
@@ -1038,6 +1053,7 @@ def print_final_results(results):
     success_count = 0
     failed_count = 0
     skipped_count = 0
+    success_platforms = []
 
     for platform in PLATFORMS:
         platform_id = platform['id']
@@ -1050,6 +1066,7 @@ def print_final_results(results):
         if status == 'success':
             symbol = '✅'
             success_count += 1
+            success_platforms.append(platform_name)
         elif status == 'failed':
             symbol = '❌'
             failed_count += 1
@@ -1073,6 +1090,80 @@ def print_final_results(results):
     with open(results_file, 'w', encoding='utf-8') as f:
         json.dump(results, f, indent=2, ensure_ascii=False)
     print(f"\n📁 结果已保存到: {results_file}")
+
+    # 发送 bark 通知
+    send_bark_notification(success_platforms, success_count, failed_count, skipped_count)
+
+    # 如果全部成功，删除视频文件夹
+    if failed_count == 0 and success_count > 0:
+        delete_video_folder()
+
+
+def send_bark_notification(success_platforms, success_count, failed_count, skipped_count):
+    """发送 bark 通知"""
+    if not success_platforms:
+        return
+
+    try:
+        from kid_utils.config import get_bark_config
+        import requests
+
+        bark_config = get_bark_config()
+        bark_id = bark_config.get('id', '')
+
+        if not bark_id:
+            print("\n⚠️  未配置 Bark ID，跳过通知")
+            return
+
+        # 获取视频名称
+        project_dir = get_video_project_dir()
+        video_name = project_dir.name if project_dir else "未知视频"
+
+        # 构建 Bark URL
+        bark_url = f"https://api.day.app/{bark_id}"
+
+        # 构建通知内容
+        platforms_str = ','.join(success_platforms)
+        title = f"{video_name} 视频已上传"
+        body = f"已上传{success_count}个平台: {platforms_str}"
+
+        # 发送通知
+        notification_url = f"{bark_url}/{title}/{body}"
+        response = requests.get(notification_url, timeout=10)
+
+        if response.status_code == 200:
+            print(f"\n📱 Bark 通知已发送")
+        else:
+            print(f"\n⚠️  Bark 通知发送失败: {response.status_code}")
+    except Exception as e:
+        print(f"\n⚠️  发送 Bark 通知时出错: {e}")
+
+
+def delete_video_folder():
+    """删除视频文件夹"""
+    try:
+        project_dir = get_video_project_dir()
+        if project_dir is None:
+            return
+
+        import shutil
+        folder_name = project_dir.name
+
+        # 确认删除
+        print(f"\n🗑️  正在删除视频文件夹: {folder_name}")
+        shutil.rmtree(project_dir)
+        print(f"✅ 已删除视频文件夹: {folder_name}")
+
+        # 尝试删除 videos 目录（如果为空）
+        videos_dir = project_dir.parent
+        try:
+            if videos_dir.exists() and not list(videos_dir.iterdir()):
+                videos_dir.rmdir()
+                print(f"✅ 已删除空的 videos 目录")
+        except:
+            pass
+    except Exception as e:
+        print(f"\n⚠️  删除视频文件夹失败: {e}")
 
 
 def main():

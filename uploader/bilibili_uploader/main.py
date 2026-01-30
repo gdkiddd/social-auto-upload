@@ -9,7 +9,7 @@ from utils.base_social_media import set_init_script
 from utils.log import bilibili_logger
 from myUtils.account_manager import get_current_account
 # 引入通用工具模块
-from uploader.common import find_cover_image, record_publish_history
+from uploader.common import find_cover_image, record_publish_history, wait_for_upload_with_progress
 
 
 class BilibiliUploader(object):
@@ -148,35 +148,15 @@ class BilibiliUploader(object):
       return True
 
   async def _wait_video_upload(self, page: Page):
-    """等待视频上传完成"""
-    bilibili_logger.info('   [-] 等待视频上传进度...')
-
-    # 等待上传进度条消失或上传完成标志出现
-    max_wait_time = 600  # 最大等待时间 10 分钟
-    wait_time = 0
-
-    while wait_time < max_wait_time:
-      try:
-        # 检查是否有上传完成的标志
-        upload_complete = page.locator('text="上传完成"')
-
-        if await upload_complete.count() > 0:
-          bilibili_logger.success('   [-] 视频上传完成')
-          await asyncio.sleep(self.step_delay)
-          return
-
-        # 如果没有进度条了，可能上传已完成
-        # 等待一下确认
-        await asyncio.sleep(5)
-        wait_time += 5
-        bilibili_logger.info(f'   [-] 上传中... 已等待 {wait_time} 秒')
-
-      except Exception as e:
-        bilibili_logger.warning(f'   [-] 等待上传时出错: {e}')
-        await asyncio.sleep(5)
-        wait_time += 5
-
-    bilibili_logger.warning('   [-] 上传等待超时，继续后续步骤')
+    """等待视频上传完成，并显示上传进度"""
+    # 使用通用上传进度监控模块
+    await wait_for_upload_with_progress(
+        page=page,
+        logger=bilibili_logger,
+        check_interval=2,
+        max_wait_time=600,
+        progress_prefix="📊 上传进度"
+    )
 
   async def _fill_video_info(self, page: Page):
     """填充视频信息：标题、标签、简介"""

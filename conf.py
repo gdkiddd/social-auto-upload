@@ -15,7 +15,8 @@ XHS_SERVER = "http://127.0.0.1:11901"
 
 # macOS Chrome 路径示例（如果为空则使用系统默认 Chromium）
 LOCAL_CHROME_PATH = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-LOCAL_CHROME_HEADLESS = False  # False = 显示浏览器窗口，True = 后台运行
+# 默认headless值，会在运行时从config.json读取
+_LOCAL_CHROME_HEADLESS_DEFAULT = False
 
 # ==================== 配置文件加载功能 ====================
 
@@ -42,6 +43,7 @@ def load_config():
         "bilibili_tid": 36,
         "bilibili_schedule": False,
         "step_delay": 3,  # 步骤之间的延迟时间（秒），用于避免触发风控
+        "chrome_headless": False,  # 浏览器headless模式，False=显示窗口，True=后台运行
         "platforms": {
             "xiaohongshu": {"enabled": True, "keep_browser_open": True},
             "douyin": {"enabled": True, "keep_browser_open": True},
@@ -162,6 +164,35 @@ def save_config(config=None):
     except Exception as e:
         print(f"⚠️  保存配置文件失败: {e}")
         return False
+
+
+def is_chrome_headless():
+    """
+    获取Chrome headless模式配置
+
+    Returns:
+        bool: False=显示浏览器窗口，True=后台运行
+    """
+    return get_config('chrome_headless', _LOCAL_CHROME_HEADLESS_DEFAULT)
+
+
+def set_chrome_headless(headless):
+    """
+    设置Chrome headless模式
+
+    Args:
+        headless: bool, False=显示浏览器窗口，True=后台运行
+
+    Returns:
+        bool: 设置是否成功
+    """
+    config = load_config()
+    config['chrome_headless'] = headless
+    return save_config(config)
+
+
+# 动态获取headless配置
+LOCAL_CHROME_HEADLESS = is_chrome_headless()
 
 
 # ==================== 账号管理便捷函数 ====================

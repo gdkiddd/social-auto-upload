@@ -14,7 +14,7 @@ from utils.network import async_retry
 from myUtils.account_manager import get_current_account
 from pathlib import Path
 # 引入通用工具模块
-from uploader.common import find_cover_image, record_publish_history
+from uploader.common import find_cover_image, record_publish_history, wait_for_upload_with_progress
 
 
 async def baijiahao_cookie_gen(account_file):
@@ -253,16 +253,26 @@ class BaiJiaHaoVideo(object):
 
     @async_retry(timeout=300)  # 例如，最多重试3次，超时时间为180秒
     async def uploading_video(self, page):
+        # 使用通用上传进度监控模块
+        # 百家号的上传完成标志：没有"上传中"文本
+        await wait_for_upload_with_progress(
+            page=page,
+            logger=baijiahao_logger,
+            complete_indicators=[],  # 使用空列表，通过自定义逻辑判断完成
+            check_interval=2,
+            max_wait_time=300,
+            progress_prefix="📊 上传进度"
+        )
+
+        # 再次检查是否真的完成了（百家号特殊处理）
         while True:
             upload_failed = await page.locator('div .cover-overlay:has-text("上传失败")').count()
             if upload_failed:
                 baijiahao_logger.error("发现上传出错了...")
-                # await self.handle_upload_error(page)  # 假设这是处理上传错误的函数
                 return False
 
             uploading = await page.locator('div .cover-overlay:has-text("上传中")').count()
             if uploading:
-                baijiahao_logger.info("正在上传视频中...")
                 await asyncio.sleep(2)  # 等待2秒再次检查
                 continue
 

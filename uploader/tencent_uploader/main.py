@@ -12,6 +12,8 @@ from utils.log import tencent_logger
 from myUtils.publish_history import get_publish_history
 from myUtils.account_manager import get_current_account
 from pathlib import Path
+# 引入通用工具模块
+from uploader.common import find_cover_image, record_publish_history, wait_for_upload_with_progress
 
 
 def format_str_for_short_title(origin_title: str) -> str:
@@ -289,25 +291,47 @@ class TencentVideo(object):
                 await asyncio.sleep(0.5)
 
     async def detect_upload_status(self, page):
-        while True:
-            # 匹配删除按钮，代表视频上传完毕，如果不存在，代表视频正在上传，则等待
+        """检测视频上传状态，并显示进度"""
+        tencent_logger.info("  [-] 等待视频上传...")
+
+        wait_time = 0
+        max_wait_time = 600  # 最大等待10分钟
+        last_progress = 0
+
+        while wait_time < max_wait_time:
             try:
-                # 匹配删除按钮，代表视频上传完毕
-                if "weui-desktop-btn_disabled" not in await page.get_by_role("button", name="发表").get_attribute(
-                        'class'):
-                    tencent_logger.info("  [-]视频上传完毕")
-                    break
-                else:
-                    tencent_logger.info("  [-] 正在上传视频中...")
-                    await asyncio.sleep(2)
-                    # 出错了视频出错
-                    if await page.locator('div.status-msg.error').count() and await page.locator(
-                            'div.media-status-content div.tag-inner:has-text("删除")').count():
-                        tencent_logger.error("  [-] 发现上传出错了...准备重试")
-                        await self.handle_upload_error(page)
+                # 检查视频号特有的上传完成标志：发表按钮不再禁用
+                publish_button = page.get_by_role("button", name="发表")
+                if await publish_button.count() > 0:
+                    button_class = await publish_button.get_attribute('class')
+                    if button_class and "weui-desktop-btn_disabled" not in button_class:
+                        tencent_logger.success("  [-] 视频上传完毕")
+                        break
+
+                # 尝试获取上传进度
+                progress = await self._get_upload_progress(page)
+                if progress and progress != last_progress:
+                    tencent_logger.info(f'  📊 上传进度: {progress}%')
+                    last_progress = progress
+
+                tencent_logger.info("  [-] 正在上传视频中...")
+                await asyncio.sleep(2)
+                wait_time += 2
+
+                # 出错了视频出错
+                if await page.locator('div.status-msg.error').count() and await page.locator(
+                        'div.media-status-content div.tag-inner:has-text("删除")').count():
+                    tencent_logger.error("  [-] 发现上传出错了...准备重试")
+                    await self.handle_upload_error(page)
             except:
                 tencent_logger.info("  [-] 正在上传视频中...")
                 await asyncio.sleep(2)
+                wait_time += 2
+
+    async def _get_upload_progress(self, page):
+        """获取视频号上传进度"""
+        from uploader.common import get_upload_progress
+        return await get_upload_progress(page)
 
     async def add_title_tags(self, page):
         await page.locator("div.input-editor").click()

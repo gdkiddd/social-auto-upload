@@ -13,7 +13,7 @@ from myUtils.account_manager import get_current_account
 from pathlib import Path
 import glob
 # 引入通用工具模块
-from uploader.common import find_cover_image, record_publish_history
+from uploader.common import find_cover_image, record_publish_history, wait_for_upload_with_progress
 
 
 async def cookie_auth(account_file):
@@ -243,24 +243,30 @@ class KSVideo(object):
             await page.keyboard.type(f"#{tag} ")
             await asyncio.sleep(0.3)
 
-        max_retries = 60  # 设置最大重试次数,最大等待时间为 2 分钟
+        # 使用通用上传进度监控模块
+        # 快手的上传完成标志：没有"上传中"文本
+        await wait_for_upload_with_progress(
+            page=page,
+            logger=kuaishou_logger,
+            complete_indicators=[],  # 使用空列表，通过自定义逻辑判断完成
+            check_interval=2,
+            max_wait_time=120,  # 快手通常较快，2分钟
+            progress_prefix="📊 上传进度"
+        )
+
+        # 再次检查是否真的完成了（快手特殊处理：检查"上传中"文本是否消失）
+        max_retries = 60
         retry_count = 0
 
         while retry_count < max_retries:
             try:
-                # 获取包含 '上传中' 文本的元素数量
                 number = await page.locator("text=上传中").count()
-
                 if number == 0:
                     kuaishou_logger.success("视频上传完毕")
                     break
-                else:
-                    if retry_count % 5 == 0:
-                        kuaishou_logger.info("正在上传视频中...")
-                    await asyncio.sleep(2)
+                await asyncio.sleep(2)
             except Exception as e:
-                kuaishou_logger.error(f"检查上传状态时发生错误: {e}")
-                await asyncio.sleep(2)  # 等待 2 秒后重试
+                await asyncio.sleep(2)
             retry_count += 1
 
         if retry_count == max_retries:

@@ -34,5 +34,6 @@
     "KIDDD",
     "Amy"
   ],
-  "step_delay": 3
+  "step_delay": 3,
+  "chrome_headless": false
 }
