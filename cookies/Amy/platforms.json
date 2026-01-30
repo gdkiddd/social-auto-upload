@@ -1,0 +1,25 @@
+{
+  "xiaohongshu": {
+    "enabled": false,
+    "keep_browser_open": false
+  },
+  "douyin": {
+    "enabled": true,
+    "keep_browser_open": false
+  },
+  "tencent": {
+    "enabled": true,
+    "keep_browser_open": false
+  },
+  "kuaishou": {
+    "enabled": true,
+    "keep_browser_open": false
+  },
+  "baijiahao": {
+    "enabled": true,
+    "keep_browser_open": false
+  },
+  "bilibili": {
+    "enabled": true
+  }
+}
