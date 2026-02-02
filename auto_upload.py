@@ -301,25 +301,13 @@ def run_upload(platform_id, platform_name, logger):
         return False
 
     try:
-        # 执行上传脚本
+        # 执行上传脚本（实时显示输出）
+        print()  # 空行分隔
         result = subprocess.run(
             [sys.executable, str(script_file)],
             cwd=SCRIPT_DIR,
-            capture_output=True,
-            text=True,
             timeout=600  # 10分钟超时
         )
-
-        # 输出脚本日志
-        if result.stdout:
-            for line in result.stdout.split('\n'):
-                if line.strip():
-                    logger.info(f"  [{platform_name}] {line}")
-
-        if result.stderr:
-            for line in result.stderr.split('\n'):
-                if line.strip():
-                    logger.error(f"  [{platform_name}] {line}")
 
         if result.returncode == 0:
             logger.success(f"{platform_name} 上传成功")
