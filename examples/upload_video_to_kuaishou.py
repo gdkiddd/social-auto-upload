@@ -1,5 +1,11 @@
+import sys
 import asyncio
 from pathlib import Path
+
+# 添加项目根目录到 Python 路径,解决从其他目录运行脚本时的模块导入问题
+PROJECT_ROOT = Path(__file__).parent.parent.resolve()
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from conf import BASE_DIR
 from myUtils.account_manager import get_current_account, get_account_cookie_path

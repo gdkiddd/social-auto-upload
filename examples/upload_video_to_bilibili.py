@@ -5,10 +5,16 @@ Bilibili 视频上传脚本
 支持从 txt 文件读取标题、标签和完整描述
 """
 
+import sys
 import time
 import json
 import asyncio
 from pathlib import Path
+
+# 添加项目根目录到 Python 路径,解决从其他目录运行脚本时的模块导入问题
+PROJECT_ROOT = Path(__file__).parent.parent.resolve()
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from uploader.bilibili_uploader.main import BilibiliUploader
 from conf import BASE_DIR
