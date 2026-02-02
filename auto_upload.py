@@ -397,6 +397,17 @@ def main():
         # 7. 更新上传记录（仅当全部成功时）
         if failed_count == 0:
             save_latest_upload_info(folder_number, video_folder.name, logger)
+
+            # 删除 videos/ 目录中的视频文件夹
+            try:
+                if target_folder.exists():
+                    logger.info(f"删除已上传的视频文件夹: {target_folder.name}")
+                    shutil.rmtree(target_folder)
+                    logger.success(f"已删除: {target_folder}")
+                else:
+                    logger.warning(f"目标文件夹不存在: {target_folder}")
+            except Exception as e:
+                logger.error(f"删除视频文件夹失败: {e}")
         else:
             logger.warning("部分平台上传失败，不更新上传记录")
 
