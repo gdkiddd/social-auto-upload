@@ -1,5 +1,41 @@
 [
   {
+    "timestamp": "2026-02-02 16:26:10",
+    "platform_id": "tencent",
+    "platform_name": "视频号",
+    "video_file": "36岁没上过班 跑滴滴治愈焦虑的一天.mp4",
+    "status": "success",
+    "account": "Amy",
+    "error_message": null
+  },
+  {
+    "timestamp": "2026-02-02 16:24:08",
+    "platform_id": "douyin",
+    "platform_name": "抖音",
+    "video_file": "36岁没上过班 跑滴滴治愈焦虑的一天.mp4",
+    "status": "success",
+    "account": "Amy",
+    "error_message": null
+  },
+  {
+    "timestamp": "2026-02-02 16:22:47",
+    "platform_id": "baijiahao",
+    "platform_name": "百家号",
+    "video_file": "36岁没上过班 跑滴滴治愈焦虑的一天.mp4",
+    "status": "success",
+    "account": "Amy",
+    "error_message": null
+  },
+  {
+    "timestamp": "2026-02-02 16:20:58",
+    "platform_id": "kuaishou",
+    "platform_name": "快手",
+    "video_file": "36岁没上过班 跑滴滴治愈焦虑的一天.mp4",
+    "status": "success",
+    "account": "Amy",
+    "error_message": null
+  },
+  {
     "timestamp": "2026-01-30 16:01:04",
     "platform_id": "tencent",
     "platform_name": "视频号",
