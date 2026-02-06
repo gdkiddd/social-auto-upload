@@ -10,8 +10,8 @@ from pathlib import Path
 # 项目基础目录
 BASE_DIR = Path(__file__).parent.resolve()
 
-# 小红书服务配置
-XHS_SERVER = "http://127.0.0.1:11901"
+# 小红书服务配置（默认值，实际值从config.json读取）
+XHS_SERVER_DEFAULT = "http://127.0.0.1:11901"
 
 # macOS Chrome 路径示例（如果为空则使用系统默认 Chromium）
 LOCAL_CHROME_PATH = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
@@ -238,3 +238,39 @@ def get_chrome_user_data_dir(platform_id):
     user_data_dir = BASE_DIR / "data" / "chrome_user_data" / platform_id / current_account
     user_data_dir.mkdir(parents=True, exist_ok=True)
     return str(user_data_dir)
+
+
+# ==================== 通知服务配置函数 ====================
+
+def get_bark_url():
+    """
+    获取Bark通知URL
+
+    Returns:
+        str: Bark URL，如果未配置则返回空字符串
+    """
+    return get_config('bark.url', '')
+
+
+def get_telegram_config():
+    """
+    获取Telegram Bot配置
+
+    Returns:
+        dict: {'bot_token': str, 'chat_id': str}，如果未配置则返回空字典
+    """
+    telegram = get_config('telegram', {})
+    return {
+        'bot_token': telegram.get('bot_token', ''),
+        'chat_id': telegram.get('chat_id', '')
+    }
+
+
+def get_xhs_server():
+    """
+    获取小红书服务地址
+
+    Returns:
+        str: 小红书服务地址，如果未配置则返回默认值
+    """
+    return get_config('xhs_server', XHS_SERVER_DEFAULT)

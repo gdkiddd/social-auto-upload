@@ -26,14 +26,13 @@ SCRIPT_DIR = Path(__file__).parent.resolve()
 os.chdir(SCRIPT_DIR)
 
 # 现在导入模块
-from conf import load_config, save_config, is_platform_enabled
+from conf import load_config, save_config, is_platform_enabled, get_bark_url
 from myUtils.account_manager import (
     get_accounts, set_current_account, get_current_account,
     check_account_cookie_exists, get_account_cookie_path
 )
 
 # 配置
-BARK_URL = "https://api.day.app/uuAAL4HgGCDWZVy5NHA9ZR"
 ACCOUNT_NAME = "Amy"
 SOURCE_DIR = SCRIPT_DIR / "videos" / "demo" / ACCOUNT_NAME  # demo 目录下按账号组织
 TARGET_DIR = SCRIPT_DIR / "videos"
@@ -93,7 +92,12 @@ class Logger:
 def send_bark_notification(title, content, logger):
     """发送 Bark 通知"""
     try:
-        url = f"{BARK_URL}/{title}/{content}"
+        bark_url = get_bark_url()
+        if not bark_url:
+            logger.warning("未配置Bark URL，跳过通知")
+            return
+
+        url = f"{bark_url}/{title}/{content}"
         response = requests.get(url, timeout=10)
         if response.status_code == 200:
             logger.success("Bark 通知发送成功")

@@ -7,7 +7,7 @@ import requests
 from playwright.async_api import async_playwright
 from xhs import XhsClient
 
-from conf import BASE_DIR, LOCAL_CHROME_HEADLESS
+from conf import BASE_DIR, LOCAL_CHROME_HEADLESS, get_bark_url, get_telegram_config
 from utils.base_social_media import set_init_script
 from utils.log import tencent_logger, kuaishou_logger, douyin_logger
 from pathlib import Path
@@ -17,25 +17,14 @@ from uploader.xhs_uploader.main import sign_local
 def load_telegram_config():
     """从config.json加载Telegram Bot配置"""
     try:
-        import json
-        config_file = Path(BASE_DIR / "config.json")
-        if config_file.exists():
-            with open(config_file, 'r', encoding='utf-8') as f:
-                config = json.load(f)
-                telegram_config = config.get('telegram', {})
+        telegram_config = get_telegram_config()
+        bot_token = telegram_config.get('bot_token')
+        chat_id = telegram_config.get('chat_id')
 
-                bot_token = telegram_config.get('bot_token')
-                chat_id = telegram_config.get('chat_id')
-
-                return bot_token, chat_id
-        return None, None
+        return bot_token, chat_id
     except Exception as e:
         tencent_logger.error(f"[+] 加载Telegram配置失败: {e}")
         return None, None
-
-
-# Bark通知配置（保留作为备用）
-BARK_URL = "https://api.day.app/uuAAL4HgGCDWZVy5NHA9ZR"
 
 
 def send_telegram_photo(photo_path, caption=None):
@@ -101,13 +90,19 @@ def send_bark_notification(title, body):
     try:
         from urllib.parse import quote
 
+        # 从config.json获取Bark URL
+        bark_url = get_bark_url()
+        if not bark_url:
+            tencent_logger.warning("[+] 未配置Bark URL")
+            return False
+
         # Bark的正确格式: https://api.day.app/YOUR_KEY/TITLE/BODY
         # title和body需要分别进行URL编码
         encoded_title = quote(title)
         encoded_body = quote(body, safe='')  # safe='' 表示编码所有特殊字符
 
         # 构建Bark URL
-        url = f"{BARK_URL}/{encoded_title}/{encoded_body}"
+        url = f"{bark_url}/{encoded_title}/{encoded_body}"
 
         tencent_logger.info(f"[+] Bark URL: {url}")
 

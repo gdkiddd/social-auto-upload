@@ -6,7 +6,7 @@ from time import sleep
 import requests
 from playwright.sync_api import sync_playwright
 
-from conf import BASE_DIR, XHS_SERVER, LOCAL_CHROME_HEADLESS
+from conf import BASE_DIR, get_xhs_server, LOCAL_CHROME_HEADLESS
 
 config = configparser.RawConfigParser()
 config.read('accounts.ini')
@@ -45,7 +45,7 @@ def sign_local(uri, data=None, a1="", web_session=""):
 
 def sign(uri, data=None, a1="", web_session=""):
     # 填写自己的 flask 签名服务端口地址
-    res = requests.post(f"{XHS_SERVER}/sign",
+    res = requests.post(f"{get_xhs_server()}/sign",
                         json={"uri": uri, "data": data, "a1": a1, "web_session": web_session})
     signs = res.json()
     return {
