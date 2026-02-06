@@ -416,7 +416,21 @@ def main():
         duration = (end_time - logger.start_time).total_seconds()
 
         title = "自动上传完成" if failed_count == 0 else "自动上传部分失败"
-        content = f"序号: {folder_number}\n视频: {video_folder.name}\n成功: {success_count} 失败: {failed_count} 跳过: {skipped_count}\n耗时: {int(duration)}秒"
+
+        # 构建详细的上传结果列表
+        platform_details = []
+        for platform_name, result in upload_results.items():
+            icon = "✅" if result == "成功" else "❌" if result == "失败" else "⏭️"
+            platform_details.append(f"{icon} {platform_name}: {result}")
+
+        platform_list = "\n".join(platform_details)
+
+        content = f"""序号: {folder_number}
+视频: {video_folder.name}
+总计: 成功 {success_count} | 失败 {failed_count} | 跳过 {skipped_count}
+耗时: {int(duration)}秒
+
+{platform_list}"""
 
         logger.divider()
         send_bark_notification(title, content, logger)

@@ -75,9 +75,19 @@ async def douyin_cookie_gen(id,status_queue):
         status_queue.put("200")
 
 
-# 视频号登录
-async def get_tencent_cookie(id,status_queue):
+# 视频号登录（支持自动二维码通知）
+async def get_tencent_cookie(id, status_queue):
+    """视频号登录，支持自动发送二维码Bark通知
+
+    Args:
+        id: 账号标识
+        status_queue: 状态队列，用于返回状态给前端
+    """
+    from myUtils.auth import extract_and_send_qrcode
+    from myUtils.account_manager import get_current_account
+
     url_changed_event = asyncio.Event()
+
     async def on_url_change():
         # 检查是否是主框架的变化
         if page.url != original_url:
@@ -88,61 +98,85 @@ async def get_tencent_cookie(id,status_queue):
             'args': [
                 '--lang en-GB'
             ],
-            'headless': LOCAL_CHROME_HEADLESS,  # Set headless option here
+            'headless': False,  # Web端登录需要显示浏览器窗口
         }
-        # Make sure to run headed.
+        # 启动浏览器
         browser = await playwright.chromium.launch(**options)
-        # Setup context however you like.
-        context = await browser.new_context()  # Pass any options
-        # Pause the page, and start recording manually.
+        context = await browser.new_context()
         context = await set_init_script(context)
         page = await context.new_page()
+
         await page.goto("https://channels.weixin.qq.com")
         original_url = page.url
 
-        # 监听页面的 'framenavigated' 事件，只关注主框架的变化
-        page.on('framenavigated',
-                lambda frame: asyncio.create_task(on_url_change()) if frame == page.main_frame else None)
-
-        # 等待 iframe 出现（最多等 60 秒）
-        iframe_locator = page.frame_locator("iframe").first
-
-        # 获取 iframe 中的第一个 img 元素
-        img_locator = iframe_locator.get_by_role("img").first
-
-        # 获取 src 属性值
-        src = await img_locator.get_attribute("src")
-        print("✅ 图片地址:", src)
-        status_queue.put(src)
-
+        # 等待二维码加载
         try:
-            # 等待 URL 变化或超时
-            await asyncio.wait_for(url_changed_event.wait(), timeout=200)  # 最多等待 200 秒
-            print("监听页面跳转成功")
-        except asyncio.TimeoutError:
+            # 尝试提取并发送二维码通知
+            account_name = get_current_account() or "视频号"
+            qrcode_path = await extract_and_send_qrcode(page, account_name=account_name)
+
+            if qrcode_path:
+                print(f"✅ 二维码已保存并发送Bark通知: {qrcode_path}")
+                # 也可以将二维码路径返回给前端（如果需要）
+                # status_queue.put(f"qrcode:{qrcode_path}")
+            else:
+                print("⚠️ 二维码提取失败，使用传统方式")
+
+            # 传统方式：尝试从iframe获取二维码（兼容旧逻辑）
+            try:
+                iframe_locator = page.frame_locator("iframe").first
+                img_locator = iframe_locator.get_by_role("img").first
+                src = await img_locator.get_attribute("src")
+                print("✅ 图片地址:", src)
+                status_queue.put(src)
+            except:
+                print("ℹ️ 无法通过iframe获取二维码，但已通过其他方式提取")
+
+        except Exception as e:
+            print(f"❌ 二维码处理异常: {e}")
             status_queue.put("500")
-            print("监听页面跳转超时")
             await page.close()
             await context.close()
             await browser.close()
             return None
+
+        # 监听页面跳转（等待扫码登录）
+        page.on('framenavigated',
+                lambda frame: asyncio.create_task(on_url_change()) if frame == page.main_frame else None)
+
+        try:
+            # 等待 URL 变化或超时（最多3分钟）
+            await asyncio.wait_for(url_changed_event.wait(), timeout=180)
+            print("✅ 监听页面跳转成功，登录完成")
+        except asyncio.TimeoutError:
+            status_queue.put("500")
+            print("❌ 监听页面跳转超时")
+            await page.close()
+            await context.close()
+            await browser.close()
+            return None
+
+        # 保存cookie
         uuid_v1 = uuid.uuid1()
         print(f"UUID v1: {uuid_v1}")
-        # 确保cookiesFile目录存在
         cookies_dir = Path(BASE_DIR / "cookiesFile")
         cookies_dir.mkdir(exist_ok=True)
         await context.storage_state(path=cookies_dir / f"{uuid_v1}.json")
-        result = await check_cookie(2,f"{uuid_v1}.json")
+
+        # 验证cookie
+        result = await check_cookie(2, f"{uuid_v1}.json")
         if not result:
             status_queue.put("500")
             await page.close()
             await context.close()
             await browser.close()
             return None
+
         await page.close()
         await context.close()
         await browser.close()
 
+        # 保存到数据库
         with sqlite3.connect(Path(BASE_DIR / "db" / "database.db")) as conn:
             cursor = conn.cursor()
             cursor.execute('''
@@ -151,6 +185,7 @@ async def get_tencent_cookie(id,status_queue):
                                 ''', (2, f"{uuid_v1}.json", id, 1))
             conn.commit()
             print("✅ 用户状态已记录")
+
         status_queue.put("200")
 
 # 快手登录

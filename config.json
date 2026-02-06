@@ -35,5 +35,9 @@
     "Amy"
   ],
   "step_delay": 3,
-  "chrome_headless": false
+  "chrome_headless": false,
+  "telegram": {
+    "bot_token": "8500145955:AAHXZM50M5_WE7BwM53uX95XqTyYlQglsio",
+    "chat_id": "-1002416418183"
+  }
 }

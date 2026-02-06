@@ -181,3 +181,6 @@ db/database.db
 uploadFile
 videoFile
 videos
+/data/temp_qrcodes
+/data
+/data

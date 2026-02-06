@@ -56,38 +56,155 @@ async def cookie_auth(account_file):
             return True
 
 
-async def get_tencent_cookie(account_file):
+async def get_tencent_cookie(account_file, send_qrcode_notification=False):
+    """获取视频号cookie，智能判断是否需要登录，可选发送二维码通知
+
+    Args:
+        account_file: cookie保存路径
+        send_qrcode_notification: 是否发送Bark二维码通知
+    """
+    from myUtils.auth import extract_and_send_qrcode
+
     async with async_playwright() as playwright:
         options = {
             'args': [
                 '--lang en-GB'
             ],
-            'headless': LOCAL_CHROME_HEADLESS,  # Set headless option here
+            'headless': False,  # 需要显示浏览器窗口才能看到二维码
         }
-        # Make sure to run headed.
-        browser = await playwright.chromium.launch(
-            **options
-        )
-        # Setup context however you like.
-        context = await browser.new_context()  # Pass any options
-        # Pause the page, and start recording manually.
+        # 启动浏览器
+        browser = await playwright.chromium.launch(**options)
+
+        # 尝试加载现有cookie
+        if os.path.exists(account_file):
+            context = await browser.new_context(storage_state=account_file)
+        else:
+            context = await browser.new_context()
+
         context = await set_init_script(context)
         page = await context.new_page()
-        await page.goto("https://channels.weixin.qq.com")
-        await page.pause()
-        # 点击调试器的继续，保存cookie
+
+        # 先访问创作页面，检查cookie是否有效
+        tencent_logger.info("[+] 检查登录状态...")
+        await page.goto("https://channels.weixin.qq.com/platform/post/create")
+
+        # 等待页面加载
+        await asyncio.sleep(2)
+
+        current_url = page.url
+
+        # 判断是否需要登录
+        needs_login = False
+        if "login" in current_url or "platform" not in current_url:
+            needs_login = True
+            tencent_logger.warning("[+] Cookie已失效，需要重新登录")
+        else:
+            # 检查页面是否有登录元素
+            try:
+                login_indicator = await page.locator('div.qrcode-wrap, img.qrcode').count()
+                if login_indicator > 0:
+                    needs_login = True
+                    tencent_logger.warning("[+] 检测到登录元素，需要重新登录")
+                else:
+                    # Cookie有效，直接保存并退出
+                    tencent_logger.success("[+] Cookie有效，无需重新登录")
+                    await context.storage_state(path=account_file)
+                    await context.close()
+                    await browser.close()
+                    return
+            except:
+                # 出错了，保守起见，重新登录
+                needs_login = True
+                tencent_logger.warning("[+] 检测登录状态时出错，准备重新登录")
+
+        # 如果需要登录
+        if needs_login:
+            tencent_logger.info("[+] 跳转到登录页面...")
+            await page.goto("https://channels.weixin.qq.com")
+
+            # 如果需要发送二维码通知
+            if send_qrcode_notification:
+                tencent_logger.info("[+] 正在提取二维码并发送Bark通知...")
+                qrcode_path = await extract_and_send_qrcode(page, account_name="视频号")
+                if qrcode_path:
+                    tencent_logger.info(f"[+] 请查看Bark通知，扫描二维码登录")
+                    tencent_logger.info(f"[+] 二维码已保存到: {qrcode_path}")
+                else:
+                    tencent_logger.warning("[+] 二维码提取失败，请查看浏览器窗口")
+            else:
+                tencent_logger.info("[+] 请查看浏览器窗口，扫描二维码登录")
+
+            # 等待用户扫码登录（最多等待3分钟）
+            try:
+                tencent_logger.info("[+] 等待用户扫码登录（最多3分钟）...")
+                await page.wait_for_url("**/platform/**", timeout=180000)
+                tencent_logger.success("[+] 登录成功！")
+            except:
+                tencent_logger.warning("[+] 等待登录超时，尝试保存当前cookie...")
+
+        # 保存cookie
         await context.storage_state(path=account_file)
+        tencent_logger.success(f"[+] Cookie已保存到: {account_file}")
+
+        await context.close()
+        await browser.close()
 
 
-async def weixin_setup(account_file, handle=False):
+async def weixin_setup(account_file, handle=False, auto_login=True):
+    """设置视频号账号，支持自动登录和二维码通知
+
+    Args:
+        account_file: cookie文件路径
+        handle: 是否自动处理cookie失效（打开浏览器）
+        auto_login: 是否启用自动登录（发送二维码Bark通知）
+
+    Returns:
+        bool: 是否设置成功
+    """
     account_file = get_absolute_path(account_file, "tencent_uploader")
-    if not os.path.exists(account_file) or not await cookie_auth(account_file):
+
+    # 检查cookie文件是否存在
+    if not os.path.exists(account_file):
+        tencent_logger.warning('[+] cookie文件不存在')
         if not handle:
-            # Todo alert message
             return False
-        tencent_logger.info('[+] cookie文件不存在或已失效，即将自动打开浏览器，请扫码登录，登陆后会自动生成cookie文件')
-        await get_tencent_cookie(account_file)
-    return True
+        # 直接进入登录流程
+        tencent_logger.info('[+] 准备登录...')
+        if auto_login:
+            await get_tencent_cookie(account_file, send_qrcode_notification=True)
+        else:
+            await get_tencent_cookie(account_file, send_qrcode_notification=False)
+        return await cookie_auth(account_file)
+
+    # 检查cookie是否有效（只在不需要自动处理时验证）
+    # 如果需要自动处理，跳过验证，直接打开浏览器，避免重复开关
+    if not handle:
+        # 不自动处理，只验证cookie
+        is_valid = await cookie_auth(account_file)
+        if is_valid:
+            tencent_logger.success('[+] cookie有效，无需重新登录')
+            return True
+        else:
+            tencent_logger.warning('[+] cookie已失效，且未启用自动处理')
+            return False
+    else:
+        # 需要自动处理，直接打开浏览器登录
+        # 这样可以避免cookie_auth验证后关闭浏览器，导致无法提取二维码
+        tencent_logger.info('[+] 正在打开浏览器并检查登录状态...')
+        tencent_logger.info('[+] 如果cookie有效，会自动关闭；如果失效，会显示二维码')
+
+        if auto_login:
+            await get_tencent_cookie(account_file, send_qrcode_notification=True)
+        else:
+            await get_tencent_cookie(account_file, send_qrcode_notification=False)
+
+        # 登录后验证cookie
+        if await cookie_auth(account_file):
+            tencent_logger.success('[+] cookie验证通过，登录成功')
+            return True
+        else:
+            tencent_logger.error('[+] 登录后cookie验证仍然失败')
+            return False
 
 
 class TencentVideo(object):
