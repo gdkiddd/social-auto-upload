@@ -245,20 +245,69 @@ def get_chrome_user_data_dir(platform_id):
 def get_bark_url():
     """
     获取Bark通知URL
+    优先从环境变量读取，其次从config.json
 
     Returns:
         str: Bark URL，如果未配置则返回空字符串
     """
-    return get_config('bark.url', '')
+    import os
+
+    # 1. 从环境变量读取 BARK_ID
+    bark_id = os.getenv('BARK_ID', '')
+    if bark_id:
+        return f"https://api.day.app/{bark_id}"
+
+    # 2. 从config.json读取（向后兼容）
+    bark_url = get_config('bark.url', '')
+    if bark_url:
+        return bark_url
+
+    # 3. 尝试从旧的 secure_config 读取（兼容性）
+    try:
+        import sys
+        sys.path.insert(0, str(Path('/Users/kidcdf/projects/kid_utils')))
+        from secure_config import get_config as get_secure_config
+        bark_id = get_secure_config('bark.id', '')
+        if bark_id:
+            return f"https://api.day.app/{bark_id}"
+    except:
+        pass
+
+    return ''
 
 
 def get_telegram_config():
     """
     获取Telegram Bot配置
+    优先从环境变量读取，其次从config.json
 
     Returns:
         dict: {'bot_token': str, 'chat_id': str}，如果未配置则返回空字典
     """
+    import os
+
+    # 1. 从环境变量读取
+    bot_token = os.getenv('TELEGRAM_BOT_TOKEN', '') or os.getenv('TELEGRAM_BOT_GDKIDDD_TOKEN', '')
+    chat_id = os.getenv('TELEGRAM_CHAT_ID', '')
+
+    if bot_token and chat_id:
+        return {'bot_token': bot_token, 'chat_id': chat_id}
+
+    # 2. 尝试从旧的 secure_config 读取（兼容性）
+    try:
+        import sys
+        sys.path.insert(0, str(Path('/Users/kidcdf/projects/kid_utils')))
+        from secure_config import get_config as get_secure_config
+
+        bot_token = get_secure_config('telegram_bot.gdkiddd_token') or get_secure_config('telegram_bot.token')
+        chat_id = get_secure_config('telegram_bot.chat_ids.kid_studio')
+
+        if bot_token and chat_id:
+            return {'bot_token': bot_token, 'chat_id': chat_id}
+    except:
+        pass
+
+    # 3. 从config.json读取（向后兼容）
     telegram = get_config('telegram', {})
     return {
         'bot_token': telegram.get('bot_token', ''),

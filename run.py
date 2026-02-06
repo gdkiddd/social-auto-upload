@@ -1105,12 +1105,12 @@ def send_bark_notification(success_platforms, success_count, failed_count, skipp
         return
 
     try:
-        from kid_utils.config import get_bark_config
+        from urllib.parse import quote
         import requests
+        import os
 
-        bark_config = get_bark_config()
-        bark_id = bark_config.get('id', '')
-
+        # 获取 Bark ID
+        bark_id = os.getenv('BARK_ID', '')
         if not bark_id:
             print("\n⚠️  未配置 Bark ID，跳过通知")
             return
@@ -1127,8 +1127,12 @@ def send_bark_notification(success_platforms, success_count, failed_count, skipp
         title = f"{video_name} 视频已上传"
         body = f"已上传{success_count}个平台: {platforms_str}"
 
+        # URL 编码
+        encoded_title = quote(title)
+        encoded_body = quote(body, safe='')
+
         # 发送通知
-        notification_url = f"{bark_url}/{title}/{body}"
+        notification_url = f"{bark_url}/{encoded_title}/{encoded_body}"
         response = requests.get(notification_url, timeout=10)
 
         if response.status_code == 200:

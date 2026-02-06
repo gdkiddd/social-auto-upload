@@ -92,12 +92,18 @@ class Logger:
 def send_bark_notification(title, content, logger):
     """发送 Bark 通知"""
     try:
+        from urllib.parse import quote
+
         bark_url = get_bark_url()
         if not bark_url:
             logger.warning("未配置Bark URL，跳过通知")
             return
 
-        url = f"{bark_url}/{title}/{content}"
+        # URL 编码标题和内容
+        encoded_title = quote(title)
+        encoded_content = quote(content, safe='')
+
+        url = f"{bark_url}/{encoded_title}/{encoded_content}"
         response = requests.get(url, timeout=10)
         if response.status_code == 200:
             logger.success("Bark 通知发送成功")

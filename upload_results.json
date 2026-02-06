@@ -1,0 +1,26 @@
+{
+  "xiaohongshu": {
+    "status": "disabled",
+    "message": "已禁用"
+  },
+  "bilibili": {
+    "status": "success",
+    "message": "发布成功"
+  },
+  "kuaishou": {
+    "status": "success",
+    "message": "发布成功"
+  },
+  "baijiahao": {
+    "status": "success",
+    "message": "发布成功"
+  },
+  "douyin": {
+    "status": "success",
+    "message": "发布成功"
+  },
+  "tencent": {
+    "status": "success",
+    "message": "发布成功"
+  }
+}
