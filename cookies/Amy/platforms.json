@@ -16,7 +16,7 @@
     "keep_browser_open": false
   },
   "baijiahao": {
-    "enabled": true,
+    "enabled": false,
     "keep_browser_open": false
   },
   "bilibili": {
