@@ -184,3 +184,7 @@ videos
 /data/temp_qrcodes
 /data
 /data
+debug_qrcode.png
+
+# Cookies - 敏感信息不提交
+cookies/

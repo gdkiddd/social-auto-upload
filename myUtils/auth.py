@@ -253,14 +253,21 @@ async def extract_and_send_qrcode(page, account_name="视频号"):
     try:
         tencent_logger.info("[+] 等待二维码加载...")
 
+        # 等待登录页面加载完成
+        try:
+            # 等待URL包含login或等待登录相关元素
+            await page.wait_for_selector('iframe, img.qrcode, .qrcode, div.qrcode-wrap', timeout=15000)
+            await asyncio.sleep(2)  # 额外等待2秒确保二维码完全加载
+        except:
+            tencent_logger.warning("[+] 等待登录元素超时，继续尝试提取二维码...")
+
         # 等待iframe出现
         try:
-            await page.wait_for_selector('iframe', timeout=10000)
             iframe_count = await page.locator('iframe').count()
             tencent_logger.info(f"[+] 找到 {iframe_count} 个iframe")
         except:
-            tencent_logger.error("[+] 未找到iframe，无法提取二维码")
-            return None
+            iframe_count = 0
+            tencent_logger.info("[+] 没有找到iframe")
 
         # 遍历所有iframe，查找二维码
         src = None
@@ -293,6 +300,30 @@ async def extract_and_send_qrcode(page, account_name="视频号"):
             except Exception as e:
                 tencent_logger.debug(f"[+] iframe[{i}] 查找失败: {e}")
                 continue
+
+        # 如果在iframe中没找到二维码，尝试在主页面中查找
+        if not src:
+            tencent_logger.info("[+] iframe中未找到二维码，正在检查主页面...")
+            main_page_selectors = [
+                'img.qrcode',
+                'img[src*="data:image"]',
+                '.qrcode img',
+                'img[src*="qrcode"]',
+                'div.qrcode-wrap img',
+                'img[alt*="二维码"]',
+                'img[alt*="扫码"]'
+            ]
+
+            for selector in main_page_selectors:
+                try:
+                    main_img = page.locator(selector).first
+                    if await main_img.count() > 0:
+                        src = await main_img.get_attribute('src')
+                        if src and (src.startswith('data:image') or 'qrcode' in src.lower()):
+                            tencent_logger.success(f"[+] 从主页面找到二维码: {selector}")
+                            break
+                except:
+                    continue
 
         # 如果没找到二维码
         if not src:

@@ -1,5 +1,104 @@
 [
   {
+    "timestamp": "2026-02-10 17:08:24",
+    "platform_id": "tencent",
+    "platform_name": "视频号",
+    "video_file": "36岁开滴滴 直面不确定的人生.mp4",
+    "status": "success",
+    "account": "Amy",
+    "error_message": null
+  },
+  {
+    "timestamp": "2026-02-10 16:35:52",
+    "platform_id": "douyin",
+    "platform_name": "抖音",
+    "video_file": "36岁开滴滴 直面不确定的人生.mp4",
+    "status": "success",
+    "account": "Amy",
+    "error_message": null
+  },
+  {
+    "timestamp": "2026-02-10 16:34:07",
+    "platform_id": "kuaishou",
+    "platform_name": "快手",
+    "video_file": "36岁开滴滴 直面不确定的人生.mp4",
+    "status": "success",
+    "account": "Amy",
+    "error_message": null
+  },
+  {
+    "timestamp": "2026-02-05 16:35:41",
+    "platform_id": "baijiahao",
+    "platform_name": "百家号",
+    "video_file": "评论区都说像舒淇.mp4",
+    "status": "success",
+    "account": "Amy",
+    "error_message": null
+  },
+  {
+    "timestamp": "2026-02-05 16:33:52",
+    "platform_id": "kuaishou",
+    "platform_name": "快手",
+    "video_file": "评论区都说像舒淇.mp4",
+    "status": "success",
+    "account": "Amy",
+    "error_message": null
+  },
+  {
+    "timestamp": "2026-02-04 16:36:00",
+    "platform_id": "douyin",
+    "platform_name": "抖音",
+    "video_file": "评论区都说像舒淇.mp4",
+    "status": "success",
+    "account": "Amy",
+    "error_message": null
+  },
+  {
+    "timestamp": "2026-02-04 16:35:24",
+    "platform_id": "baijiahao",
+    "platform_name": "百家号",
+    "video_file": "评论区都说像舒淇.mp4",
+    "status": "success",
+    "account": "Amy",
+    "error_message": null
+  },
+  {
+    "timestamp": "2026-02-04 16:33:50",
+    "platform_id": "kuaishou",
+    "platform_name": "快手",
+    "video_file": "评论区都说像舒淇.mp4",
+    "status": "success",
+    "account": "Amy",
+    "error_message": null
+  },
+  {
+    "timestamp": "2026-02-04 14:20:58",
+    "platform_id": "douyin",
+    "platform_name": "抖音",
+    "video_file": "评论区都说像舒淇.mp4",
+    "status": "success",
+    "account": "Amy",
+    "error_message": null
+  },
+  {
+    "timestamp": "2026-02-04 14:20:22",
+    "platform_id": "baijiahao",
+    "platform_name": "百家号",
+    "video_file": "评论区都说像舒淇.mp4",
+    "status": "success",
+    "account": "Amy",
+    "error_message": null
+  },
+  {
+    "timestamp": "2026-02-04 14:18:46",
+    "platform_id": "kuaishou",
+    "platform_name": "快手",
+    "video_file": "评论区都说像舒淇.mp4",
+    "status": "success",
+    "account": "Amy",
+    "error_message": null
+  },
+  {
     "timestamp": "2026-02-02 16:26:10",
     "platform_id": "tencent",
     "platform_name": "视频号",

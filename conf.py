@@ -288,7 +288,10 @@ def get_telegram_config():
 
     # 1. 从环境变量读取
     bot_token = os.getenv('TELEGRAM_BOT_TOKEN', '') or os.getenv('TELEGRAM_BOT_GDKIDDD_TOKEN', '')
-    chat_id = os.getenv('TELEGRAM_CHAT_ID', '')
+    chat_id = (os.getenv('TELEGRAM_CHAT_ID', '') or
+               os.getenv('TELEGRAM_BOT_CHAT_IDS_KID_STUDIO', '') or
+               os.getenv('TELEGRAM_BOT_CHAT_IDS_DEAI_WATCH', '') or
+               os.getenv('TELEGRAM_BOT_CHAT_IDS_KID_WEB3', ''))
 
     if bot_token and chat_id:
         return {'bot_token': bot_token, 'chat_id': chat_id}
