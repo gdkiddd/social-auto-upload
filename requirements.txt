@@ -16,7 +16,7 @@ certifi==2025.4.26
 cf_clearance==0.31.0
 cffi==1.17.1
 charset-normalizer==3.4.2
-click==8.2.1
+click==8.1.8
 colorama==0.4.6
 dnspython==2.7.0
 eventlet==0.40.0
@@ -68,7 +68,6 @@ tomli==2.2.1
 tomli_w==1.2.0
 trio==0.30.0
 trio-websocket==0.12.2
-truststore==0.10.1
 typing_extensions==4.13.2
 urllib3==2.4.0
 websocket-client==1.8.0
