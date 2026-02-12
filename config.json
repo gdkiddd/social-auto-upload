@@ -36,5 +36,8 @@
   ],
   "step_delay": 3,
   "chrome_headless": false,
-  "xhs_server": "http://127.0.0.1:11901"
+  "xhs_server": "http://127.0.0.1:11901",
+  "bark": {
+    "url": "https://api.day.app/uuAAL4HgGCDWZVy5NHA9ZR"
+  }
 }

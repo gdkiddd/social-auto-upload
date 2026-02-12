@@ -360,6 +360,11 @@ async def extract_and_send_qrcode(page, account_name="视频号"):
             caption = f"{account_name}需要重新登录\n\n请使用手机微信扫码登录"
             send_telegram_photo(str(qrcode_path), caption)
 
+            # 发送Bark通知
+            title = f"{account_name}需要重新登录"
+            body = f"请使用手机微信扫码登录\n\n二维码已保存到: {qrcode_path}"
+            send_bark_notification(title, body)
+
             return str(qrcode_path)
 
         except Exception as e:

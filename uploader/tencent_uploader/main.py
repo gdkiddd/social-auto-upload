@@ -134,13 +134,17 @@ async def get_tencent_cookie(account_file, send_qrcode_notification=False):
             else:
                 tencent_logger.info("[+] 请查看浏览器窗口，扫描二维码登录")
 
-            # 等待用户扫码登录（最多等待3分钟）
+            # 等待用户扫码登录（不限制等待时间）
             try:
-                tencent_logger.info("[+] 等待用户扫码登录（最多3分钟）...")
-                await page.wait_for_url("**/platform/**", timeout=180000)
-                tencent_logger.success("[+] 登录成功！")
-            except:
-                tencent_logger.warning("[+] 等待登录超时，尝试保存当前cookie...")
+                tencent_logger.info("[+] 等待用户扫码登录（不限制等待时间，请及时扫码）...")
+                while True:
+                    await asyncio.sleep(2)
+                    current_url = page.url
+                    if "/platform/" in current_url:
+                        tencent_logger.success("[+] 登录成功！")
+                        break
+            except Exception as e:
+                tencent_logger.warning(f"[+] 等待登录过程出错: {e}")
 
         # 保存cookie
         await context.storage_state(path=account_file)
