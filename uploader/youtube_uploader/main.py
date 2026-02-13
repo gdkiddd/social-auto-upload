@@ -39,7 +39,7 @@ class YouTubeUploader(object):
         user_data_dir=chrome_user_data_dir,
         headless=self.headless,
         executable_path=self.local_executable_path,
-        viewport={'width': 1500, 'height': 1200},
+        viewport={'width': 800, 'height': 600},
         locale='zh-CN',
         timezone_id='Asia/Shanghai',
         args=[

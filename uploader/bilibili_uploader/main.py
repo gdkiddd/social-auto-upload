@@ -9,7 +9,6 @@ from utils.base_social_media import set_init_script
 from utils.log import bilibili_logger
 from myUtils.account_manager import get_current_account
 # 引入通用工具模块
-from uploader.common import find_cover_image, record_publish_history, wait_for_upload_with_progress
 
 
 class BilibiliUploader(object):
@@ -31,6 +30,7 @@ class BilibiliUploader(object):
       # 准备浏览器启动选项
       launch_options = {
         'headless': self.headless,
+        'proxy': None,  # 禁用代理，避免 ERR_PROXY_CONNECTION_FAILED 错误
       }
 
       if self.local_executable_path:
@@ -40,7 +40,7 @@ class BilibiliUploader(object):
 
       # 创建浏览器上下文，使用 cookie 文件
       context = await browser.new_context(
-        viewport={"width": 1500, "height": 1200},
+        viewport={"width": 800, "height": 600},
         storage_state=f"{self.account_file}"
       )
       context = await set_init_script(context)

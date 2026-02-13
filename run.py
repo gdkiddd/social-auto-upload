@@ -26,7 +26,7 @@ from myUtils.account_manager import (
     get_account_cookie_path, check_account_cookie_exists,
     ensure_default_account, migrate_old_cookies
 )
-from myUtils.publish_history import get_publish_history
+from myUtils.upload_history import get_upload_history
 from myUtils.video_project import get_video_project_dir, get_video_files_from_project
 
 # 确保默认账号存在
@@ -397,6 +397,46 @@ def show_platform_settings(platform):
             print("\n❌ 无效的选项")
 
 
+def show_upload_history():
+    """显示上传历史记录（使用 videos/history.json）"""
+    print("\n" + "=" * 60)
+    print("📊 上传历史记录")
+    print("=" * 60)
+
+    upload_history = get_upload_history()
+    records = upload_history.get_latest_records(limit=50)
+
+    if not records:
+        print("\n暂无上传历史记录")
+        print("\n[0] 返回")
+        print("=" * 60)
+        choice = input("\n请输入选项: ").strip()
+        return
+
+    print(f"\n共 {len(records)} 条上传记录\n")
+
+    # 显示最近20条
+    for i, record in enumerate(records[:20], 1):
+        result_icon = "✅" if record['result'] == 'success' else "❌"
+        print(f"\n[{i}] {result_icon} {record['date']}")
+        print(f"    账号: {record['account']}")
+        print(f"    视频: {record['video'][:50]}...")
+        print(f"    平台: {record['platforms']} 个")
+        print(f"    结果: {record['result']}")
+
+    if len(records) > 20:
+        print(f"\n... 还有 {len(records) - 20} 条记录未显示")
+
+    print("\n" + "=" * 60)
+    print("[0] 返回")
+    print("=" * 60)
+
+    choice = input("\n请输入选项: ").strip()
+
+    if choice == '0':
+        return
+
+
 def show_publish_history():
     """显示发布历史记录"""
     print("\n" + "=" * 60)
@@ -467,9 +507,9 @@ def show_menu():
     account_option = len(PLATFORMS) + 2
     print(f"  [{account_option}] 切换账号")
 
-    # 发布历史选项
+    # 上传历史选项
     history_option = len(PLATFORMS) + 3
-    print(f"  [{history_option}] 查看发布历史")
+    print(f"  [{history_option}] 查看上传历史")
 
     # 最后一个选项：设置定时时间
     last_option = len(PLATFORMS) + 4
@@ -1202,8 +1242,8 @@ def main():
             show_account_menu()
 
         elif choice == str(len(PLATFORMS) + 3):
-            # 查看发布历史
-            show_publish_history()
+            # 查看上传历史
+            show_upload_history()
 
         elif choice == str(len(PLATFORMS) + 4):
             # 设置定时时间

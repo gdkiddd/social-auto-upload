@@ -12,7 +12,6 @@ from myUtils.publish_history import get_publish_history
 from myUtils.account_manager import get_current_account
 from pathlib import Path
 # 引入通用工具模块
-from uploader.common import find_cover_image, record_publish_history, wait_for_upload_with_progress
 
 
 async def cookie_auth(account_file):
@@ -131,7 +130,7 @@ class XiaoHongShuVideo(object):
         )
         # 创建一个浏览器上下文，使用指定的 cookie 文件
         context = await browser.new_context(
-            viewport={"width": 1500, "height": 1200},
+            viewport={"width": 800, "height": 600},
             storage_state=f"{self.account_file}"
         )
         context = await set_init_script(context)

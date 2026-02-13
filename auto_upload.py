@@ -5,10 +5,11 @@
 功能：
 1. 从 videos/demo/Amy/ 按序号复制下一个视频文件夹到 videos/
 2. 选中 Amy 账户
-3. 执行全部平台上传功能
-4. 上传成功后更新 latest.json 记录
-5. 输出详细日志
-6. 完成后发送 bark 通知
+3. 执行全部平台上传功能（支持断点续传）
+4. 记录每个平台的上传状态，支持跳过已成功的平台
+5. 上传成功后更新 latest.json 记录
+6. 输出详细日志
+7. 完成后发送 bark 通知
 """
 
 import os
@@ -34,9 +35,11 @@ from myUtils.account_manager import (
 
 # 配置
 ACCOUNT_NAME = "Amy"
-SOURCE_DIR = SCRIPT_DIR / "videos" / "demo" / ACCOUNT_NAME  # demo 目录下按账号组织
+SOURCE_DIR = SCRIPT_DIR / "videos" / ACCOUNT_NAME  # videos 目录下按账号组织
 TARGET_DIR = SCRIPT_DIR / "videos"
-LATEST_JSON_FILE = SOURCE_DIR / "latest.json"  # 记录最新上传的视频序号
+UPLOADING_JSON_FILE = TARGET_DIR / "uploading.json"  # 记录当前正在上传的视频路径
+HISTORY_JSON_FILE = TARGET_DIR / "history.json"  # 记录上传历史
+UPLOAD_STATUS_FILE = SOURCE_DIR / "video_upload_status.json"  # 记录每个视频的上传状态
 
 # 平台列表（与 run.py 保持一致）
 PLATFORMS = [
@@ -113,6 +116,95 @@ def send_bark_notification(title, content, logger):
         logger.error(f"Bark 通知发送异常: {e}")
 
 
+def load_upload_status(logger):
+    """加载视频上传状态
+
+    Returns:
+        dict: 上传状态字典，格式：{video_folder_name: {platform_id: status}}
+    """
+    if not UPLOAD_STATUS_FILE.exists():
+        logger.info("未找到上传状态文件，创建新的状态记录")
+        return {}
+
+    try:
+        with open(UPLOAD_STATUS_FILE, 'r', encoding='utf-8') as f:
+            status = json.load(f)
+            logger.info(f"读取上传状态文件成功")
+            return status
+    except Exception as e:
+        logger.warning(f"读取上传状态文件失败: {e}，将创建新的状态记录")
+        return {}
+
+
+def save_upload_status(status, logger):
+    """保存视频上传状态
+
+    Args:
+        status: 上传状态字典
+    """
+    try:
+        with open(UPLOAD_STATUS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(status, f, ensure_ascii=False, indent=2)
+        logger.success("上传状态已保存")
+    except Exception as e:
+        logger.error(f"保存上传状态失败: {e}")
+
+
+def get_video_upload_status(video_folder_name, logger):
+    """获取指定视频的上传状态
+
+    Args:
+        video_folder_name: 视频文件夹名称
+
+    Returns:
+        dict: 该视频的上传状态，格式：{platform_id: status}
+    """
+    status = load_upload_status(logger)
+    return status.get(video_folder_name, {})
+
+
+def update_video_upload_status(video_folder_name, platform_id, platform_name, upload_result, logger):
+    """更新指定视频的上传状态
+
+    Args:
+        video_folder_name: 视频文件夹名称
+        platform_id: 平台ID
+        platform_name: 平台名称
+        upload_result: 上传结果（成功/失败/跳过）
+    """
+    status = load_upload_status(logger)
+
+    if video_folder_name not in status:
+        status[video_folder_name] = {}
+
+    status[video_folder_name][platform_id] = {
+        'platform_name': platform_name,
+        'status': upload_result,
+        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    }
+
+    save_upload_status(status, logger)
+
+
+def is_platform_uploaded(video_folder_name, platform_id, logger):
+    """检查指定视频的指定平台是否已成功上传
+
+    Args:
+        video_folder_name: 视频文件夹名称
+        platform_id: 平台ID
+
+    Returns:
+        bool: True 表示已成功上传，False 表示未上传或上传失败
+    """
+    video_status = get_video_upload_status(video_folder_name, logger)
+    platform_status = video_status.get(platform_id, {})
+
+    if platform_status.get('status') == '成功':
+        return True
+
+    return False
+
+
 def extract_folder_number(folder_name):
     """从文件夹名中提取序号
 
@@ -126,68 +218,152 @@ def extract_folder_number(folder_name):
     return None
 
 
-def load_latest_upload_info(logger):
-    """加载最新上传记录
+def load_uploading_info(logger):
+    """加载当前正在上传的视频信息
 
     Returns:
-        int: 最新上传的视频序号，如果没有记录则返回 0
+        dict: 包含 folder_path, folder_name, folder_number 的字典，如果没有记录则返回 None
     """
-    if not LATEST_JSON_FILE.exists():
-        logger.info("未找到上传记录文件，将上传第一个视频")
-        return 0
+    if not UPLOADING_JSON_FILE.exists():
+        logger.info("未找到上传中记录文件，将选择下一个视频")
+        return None
 
     try:
-        with open(LATEST_JSON_FILE, 'r', encoding='utf-8') as f:
+        with open(UPLOADING_JSON_FILE, 'r', encoding='utf-8') as f:
             data = json.load(f)
-            latest_number = data.get('latest_number', 0)
-            logger.info(f"读取上传记录: 最新上传序号 = {latest_number}")
-            return latest_number
+            logger.info(f"读取上传中记录: {data.get('folder_name')}")
+            return data
     except Exception as e:
-        logger.warning(f"读取上传记录失败: {e}，将上传第一个视频")
-        return 0
+        logger.warning(f"读取上传中记录失败: {e}，将选择下一个视频")
+        return None
 
 
-def save_latest_upload_info(folder_number, folder_name, logger):
-    """保存最新上传记录
+def save_uploading_info(folder_number, folder_name, folder_path, logger):
+    """保存当前正在上传的视频信息
 
     Args:
         folder_number: 视频文件夹序号
         folder_name: 视频文件夹名称
+        folder_path: 视频文件夹完整路径
     """
     try:
         data = {
-            'latest_number': folder_number,
+            'folder_number': folder_number,
             'folder_name': folder_name,
-            'upload_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            'folder_path': str(folder_path),
+            'update_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         }
 
-        with open(LATEST_JSON_FILE, 'w', encoding='utf-8') as f:
+        with open(UPLOADING_JSON_FILE, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
-        logger.success(f"上传记录已更新: 序号 {folder_number} - {folder_name}")
+        logger.success(f"上传中记录已更新: {folder_name}")
     except Exception as e:
-        logger.error(f"保存上传记录失败: {e}")
+        logger.error(f"保存上传中记录失败: {e}")
 
 
-def get_next_video_folder(logger):
-    """获取下一个待上传的视频文件夹
+def load_upload_history(logger):
+    """加载上传历史记录
 
     Returns:
-        Path: 下一个视频文件夹路径，如果没有则返回 None
+        list: 历史记录列表
+    """
+    if not HISTORY_JSON_FILE.exists():
+        logger.info("未找到上传历史文件，创建新的历史记录")
+        return []
+
+    try:
+        with open(HISTORY_JSON_FILE, 'r', encoding='utf-8') as f:
+            history = json.load(f)
+            logger.info(f"读取上传历史: 共 {len(history)} 条记录")
+            return history
+    except Exception as e:
+        logger.warning(f"读取上传历史失败: {e}，将创建新的历史记录")
+        return []
+
+
+def save_upload_history(history, logger):
+    """保存上传历史记录
+
+    Args:
+        history: 历史记录列表
+    """
+    try:
+        with open(HISTORY_JSON_FILE, 'w', encoding='utf-8') as f:
+            json.dump(history, f, ensure_ascii=False, indent=2)
+        logger.success(f"上传历史已保存")
+    except Exception as e:
+        logger.error(f"保存上传历史失败: {e}")
+
+
+def add_upload_history(folder_name, upload_results, logger):
+    """添加一条上传历史记录
+
+    Args:
+        folder_name: 视频文件夹名称
+        upload_results: 上传结果字典 {platform_name: status}
+    """
+    history = load_upload_history(logger)
+
+    # 统计结果
+    success_count = 0
+    failed_count = 0
+
+    for platform_name, status in upload_results.items():
+        if status == "成功":
+            success_count += 1
+        elif status == "失败":
+            failed_count += 1
+
+    total_platforms = success_count + failed_count
+
+    # 判断总体结果：只要有失败就是 fail，全部成功才是 success
+    result = "fail" if failed_count > 0 else "success"
+
+    # 创建历史记录
+    record = {
+        "date": datetime.now().strftime('%Y-%m-%d %H:%M'),
+        "account": ACCOUNT_NAME,
+        "video": folder_name,
+        "platforms": total_platforms,
+        "result": result,
+        "details": upload_results
+    }
+
+    # 添加到历史开头
+    history.insert(0, record)
+
+    # 只保留最近 100 条记录
+    history = history[:100]
+
+    # 保存历史
+    save_upload_history(history, logger)
+
+    logger.success(f"已添加上传历史: {folder_name} - {result}")
+
+
+def get_next_video_folder(logger, current_number=None):
+    """获取下一个待上传的视频文件夹
+
+    Args:
+        current_number: 当前视频序号，如果指定则从该序号之后查找
+
+    Returns:
+        tuple: (folder_number, folder_path) 下一个视频文件夹信息，如果没有则返回 (None, None)
     """
     logger.info(f"扫描源目录: {SOURCE_DIR}")
 
     if not SOURCE_DIR.exists():
         logger.error(f"源目录不存在: {SOURCE_DIR}")
-        return None
+        return None, None
 
-    # 获取所有子文件夹（排除隐藏文件和 latest.json）
+    # 获取所有子文件夹（排除隐藏文件和配置文件）
     folders = [f for f in SOURCE_DIR.iterdir()
                if f.is_dir() and not f.name.startswith('.')]
 
     if not folders:
-        logger.error("demo 目录下没有找到视频文件夹")
-        return None
+        logger.error("源目录下没有找到视频文件夹")
+        return None, None
 
     # 提取每个文件夹的序号
     folder_numbers = []
@@ -198,51 +374,23 @@ def get_next_video_folder(logger):
 
     if not folder_numbers:
         logger.error("没有找到带序号的视频文件夹（格式：序号) 标题）")
-        return None
+        return None, None
 
     # 按序号排序
     folder_numbers.sort(key=lambda x: x[0])
 
-    # 获取最新上传的序号
-    latest_number = load_latest_upload_info(logger)
+    # 确定起始序号
+    start_number = current_number if current_number is not None else 0
 
     # 找到下一个序号的文件夹
     for number, folder in folder_numbers:
-        if number > latest_number:
+        if number > start_number:
             logger.info(f"找到下一个视频: 序号 {number} - {folder.name}")
-            logger.info(f"上次上传序号: {latest_number}")
+            logger.info(f"起始序号: {start_number}")
             return number, folder
 
-    logger.warning(f"所有视频都已上传完成（最新序号: {latest_number}）")
+    logger.warning(f"所有视频都已上传完成（起始序号: {start_number}）")
     return None, None
-
-
-def copy_video_folder(source_folder, logger):
-    """复制视频文件夹到 videos/ 目录"""
-    target_path = TARGET_DIR / source_folder.name
-
-    # 检查目标是否已存在
-    if target_path.exists():
-        logger.warning(f"目标目录已存在: {target_path}")
-        logger.info(f"删除旧目录: {target_path}")
-        shutil.rmtree(target_path)
-
-    # 复制文件夹
-    logger.info(f"开始复制: {source_folder} -> {target_path}")
-    try:
-        shutil.copytree(source_folder, target_path)
-        logger.success(f"复制完成: {target_path}")
-
-        # 列出复制的文件
-        files = list(target_path.glob("*"))
-        logger.info(f"共复制 {len(files)} 个文件")
-        for file in files:
-            logger.info(f"  - {file.name}")
-
-        return target_path
-    except Exception as e:
-        logger.error(f"复制失败: {e}")
-        return None
 
 
 def switch_account(account_name, logger):
@@ -295,20 +443,32 @@ def check_cookies(account_name, logger):
         return True
 
 
-def run_upload(platform_id, platform_name, logger):
-    """执行单个平台的上传"""
+def run_upload(platform_id, platform_name, video_folder_name, logger):
+    """执行单个平台的上传
+
+    Args:
+        platform_id: 平台ID
+        platform_name: 平台名称
+        video_folder_name: 视频文件夹名称
+        logger: 日志对象
+    """
+    # 检查是否已成功上传
+    if is_platform_uploaded(video_folder_name, platform_id, logger):
+        logger.info(f"✅ {platform_name} 已上传成功，跳过")
+        return '跳过'
+
     logger.divider()
     logger.info(f"开始上传到 {platform_name}")
 
     script_path = UPLOAD_SCRIPTS.get(platform_id)
     if not script_path:
         logger.error(f"未找到 {platform_name} 的上传脚本")
-        return False
+        return '失败'
 
     script_file = SCRIPT_DIR / script_path
     if not script_file.exists():
         logger.error(f"脚本文件不存在: {script_file}")
-        return False
+        return '失败'
 
     try:
         # 执行上传脚本（实时显示输出）
@@ -319,19 +479,28 @@ def run_upload(platform_id, platform_name, logger):
             timeout=600  # 10分钟超时
         )
 
+        upload_result = '成功' if result.returncode == 0 else '失败'
+
+        # 更新上传状态
+        update_video_upload_status(video_folder_name, platform_id, platform_name, upload_result, logger)
+
         if result.returncode == 0:
             logger.success(f"{platform_name} 上传成功")
-            return True
+            return '成功'
         else:
             logger.error(f"{platform_name} 上传失败 (退出码: {result.returncode})")
-            return False
+            return '失败'
 
     except subprocess.TimeoutExpired:
         logger.error(f"{platform_name} 上传超时（10分钟）")
-        return False
+        # 更新上传状态为失败
+        update_video_upload_status(video_folder_name, platform_id, platform_name, '失败', logger)
+        return '失败'
     except Exception as e:
         logger.error(f"{platform_name} 上传异常: {e}")
-        return False
+        # 更新上传状态为失败
+        update_video_upload_status(video_folder_name, platform_id, platform_name, '失败', logger)
+        return '失败'
 
 
 def main():
@@ -342,37 +511,50 @@ def main():
     logger.info(f"开始时间: {logger.start_time.strftime('%Y-%m-%d %H:%M:%S')}")
 
     try:
-        # 1. 获取下一个待上传的视频文件夹
+        # 1. 检查是否有正在上传的视频
         logger.divider()
-        logger.info("步骤 1: 获取下一个待上传视频")
-        folder_number, video_folder = get_next_video_folder(logger)
-        if not video_folder:
-            send_bark_notification("自动上传结束", "所有视频已上传完成", logger)
-            return
+        logger.info("步骤 1: 检查上传状态")
+        uploading_info = load_uploading_info(logger)
 
-        # 2. 复制到 videos/ 目录
-        logger.divider()
-        logger.info("步骤 2: 复制视频文件夹")
-        target_folder = copy_video_folder(video_folder, logger)
-        if not target_folder:
-            send_bark_notification("自动上传失败", "复制视频文件夹失败", logger)
-            return
+        if uploading_info:
+            # 继续上传之前的视频
+            folder_number = uploading_info['folder_number']
+            folder_name = uploading_info['folder_name']
+            folder_path = Path(uploading_info['folder_path'])
+            logger.info(f"继续上传视频: 序号 {folder_number} - {folder_name}")
+            logger.info(f"视频路径: {folder_path}")
+        else:
+            # 获取下一个待上传的视频
+            logger.info("获取下一个待上传视频")
+            folder_number, folder_path = get_next_video_folder(logger)
+            if not folder_path:
+                send_bark_notification("自动上传结束", "所有视频已上传完成", logger)
+                return
 
-        # 3. 切换到 Amy 账户
+            folder_name = folder_path.name
+            logger.success(f"选择视频: 序号 {folder_number} - {folder_name}")
+
+            # 保存到 uploading.json
+            save_uploading_info(folder_number, folder_name, folder_path, logger)
+
+        # 2. 切换到 Amy 账户
         logger.divider()
-        logger.info("步骤 3: 切换账户")
+        logger.info("步骤 2: 切换账户")
         if not switch_account(ACCOUNT_NAME, logger):
             send_bark_notification("自动上传失败", f"切换账户失败: {ACCOUNT_NAME}", logger)
             return
 
-        # 4. 检查 Cookie
+        # 3. 检查 Cookie
+        logger.divider()
+        logger.info("步骤 3: 检查 Cookie")
         if not check_cookies(ACCOUNT_NAME, logger):
             send_bark_notification("自动上传失败", "Cookie 不完整，请先登录", logger)
             return
 
-        # 5. 执行上传
+        # 4. 执行上传
         logger.divider()
         logger.info("步骤 4: 执行平台上传")
+        logger.info(f"视频路径: {folder_path}")
 
         upload_results = {}
         for platform in PLATFORMS:
@@ -386,10 +568,10 @@ def main():
                 continue
 
             # 执行上传
-            success = run_upload(platform_id, platform_name, logger)
-            upload_results[platform_name] = "成功" if success else "失败"
+            result = run_upload(platform_id, platform_name, folder_name, logger)
+            upload_results[platform_name] = result
 
-        # 6. 生成总结报告
+        # 5. 生成总结报告
         logger.divider()
         logger.info("📊 上传结果汇总")
 
@@ -404,40 +586,57 @@ def main():
         logger.divider()
         logger.info(f"总计: 成功 {success_count} | 失败 {failed_count} | 跳过 {skipped_count}")
 
-        # 7. 更新上传记录（仅当全部成功时）
-        if failed_count == 0:
-            save_latest_upload_info(folder_number, video_folder.name, logger)
+        # 6. 添加上传历史记录
+        add_upload_history(folder_name, upload_results, logger)
 
-            # 删除 videos/ 目录中的视频文件夹
-            try:
-                if target_folder.exists():
-                    logger.info(f"删除已上传的视频文件夹: {target_folder.name}")
-                    shutil.rmtree(target_folder)
-                    logger.success(f"已删除: {target_folder}")
-                else:
-                    logger.warning(f"目标文件夹不存在: {target_folder}")
-            except Exception as e:
-                logger.error(f"删除视频文件夹失败: {e}")
-        else:
-            logger.warning("部分平台上传失败，不更新上传记录")
+        # 7. 检查是否所有平台都成功
+        video_status = get_video_upload_status(folder_name, logger)
+        enabled_platforms = [p for p in PLATFORMS if is_platform_enabled(p['id'])]
+        total_enabled = len(enabled_platforms)
+        uploaded_platforms = sum(1 for p in enabled_platforms
+                                if video_status.get(p['id'], {}).get('status') == '成功')
+
+        logger.info(f"上传进度: {uploaded_platforms}/{total_enabled} 个平台已成功")
 
         # 8. 发送 Bark 通知
         end_time = datetime.now()
         duration = (end_time - logger.start_time).total_seconds()
 
-        title = "自动上传完成" if failed_count == 0 else "自动上传部分失败"
-
         # 构建详细的上传结果列表
         platform_details = []
         for platform_name, result in upload_results.items():
-            icon = "✅" if result == "成功" else "❌" if result == "失败" else "⏭️"
+            icon = "✅" if result == "成功" else "❌" if result == "失败" else "⏭️ "
             platform_details.append(f"{icon} {platform_name}: {result}")
 
         platform_list = "\n".join(platform_details)
 
+        # 根据进度决定标题和内容
+        if uploaded_platforms >= total_enabled:
+            title = "✅ 自动上传完成"
+            status_summary = f"所有平台上传成功 ({uploaded_platforms}/{total_enabled})"
+
+            # 尝试获取下一个视频，更新 uploading.json
+            next_number, next_folder = get_next_video_folder(logger, current_number=folder_number)
+            if next_folder:
+                save_uploading_info(next_number, next_folder.name, next_folder, logger)
+                logger.info(f"✅ 已准备下一个视频: 序号 {next_number} - {next_folder.name}")
+            else:
+                # 没有下一个视频了，删除 uploading.json
+                try:
+                    UPLOADING_JSON_FILE.unlink()
+                    logger.success("✅ 所有视频已上传完成")
+                except:
+                    pass
+        else:
+            title = "⚠️ 自动上传部分完成"
+            status_summary = f"进度: {uploaded_platforms}/{total_enabled} 个平台成功"
+            remaining = total_enabled - uploaded_platforms
+            status_summary += f"\n再次运行将自动上传剩余 {remaining} 个平台"
+
         content = f"""序号: {folder_number}
-视频: {video_folder.name}
-总计: 成功 {success_count} | 失败 {failed_count} | 跳过 {skipped_count}
+视频: {folder_name}
+{status_summary}
+本次: 成功 {success_count} | 失败 {failed_count} | 跳过 {skipped_count}
 耗时: {int(duration)}秒
 
 {platform_list}"""
@@ -445,7 +644,11 @@ def main():
         logger.divider()
         send_bark_notification(title, content, logger)
 
-        logger.success(f"所有任务完成！总耗时: {int(duration)}秒")
+        if uploaded_platforms >= total_enabled:
+            logger.success(f"✅ 所有任务完成！总耗时: {int(duration)}秒")
+        else:
+            logger.info(f"⚠️  部分任务完成，再次运行将自动继续")
+
         logger.divider()
 
     except Exception as e:

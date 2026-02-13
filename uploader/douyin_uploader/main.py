@@ -11,7 +11,8 @@ from utils.log import douyin_logger
 from myUtils.account_manager import get_current_account
 from pathlib import Path
 # 引入通用工具模块
-from uploader.common import find_cover_image, record_publish_history, init_browser_context, wait_for_upload_with_progress
+# 引入通知功能
+from myUtils.auth import send_bark_notification, send_telegram_photo
 
 
 async def cookie_auth(account_file):
@@ -111,6 +112,7 @@ class DouYinVideo(object):
         # 准备浏览器启动选项
         launch_options = {
             'headless': self.headless,
+            'proxy': None,  # 禁用代理，避免 ERR_PROXY_CONNECTION_FAILED 错误
         }
 
         if self.local_executable_path:
@@ -121,7 +123,7 @@ class DouYinVideo(object):
         )
         # 创建一个浏览器上下文，使用指定的 cookie 文件
         context = await browser.new_context(
-            viewport={"width": 1500, "height": 1200},
+            viewport={"width": 800, "height": 600},
             storage_state=f"{self.account_file}"
         )
         context = await set_init_script(context)
@@ -254,6 +256,21 @@ class DouYinVideo(object):
                 verify_code_popup = page.locator('div:has(p.uc-ui-typography_description:has-text("获取验证码"))')
                 if await verify_code_popup.count() > 0:
                     douyin_logger.warning("  [-] 检测到短信验证码弹窗")
+
+                    # 发送 Bark 通知
+                    bark_title = "抖音上传需要验证码"
+                    bark_body = f"视频《{self.title}》上传需要短信验证码，请尽快手动输入验证码以继续发布"
+                    send_bark_notification(bark_title, bark_body)
+
+                    # 发送 Telegram 通知（带截图）
+                    try:
+                        screenshot_path = f"data/temp_qrcodes/douyin_verify_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+                        os.makedirs(os.path.dirname(screenshot_path), exist_ok=True)
+                        await page.screenshot(path=screenshot_path)
+                        send_telegram_photo(screenshot_path, f"📱 抖音上传需要短信验证码\n\n视频：{self.title}\n\n请尽快手动输入验证码以继续发布")
+                    except Exception as e:
+                        douyin_logger.warning(f"  [-] Telegram截图通知失败: {e}")
+
                     # 点击"获取验证码"按钮
                     get_code_button = page.locator('div.uc-ui-input_right p.uc-ui-typography_description:has-text("获取验证码")')
                     if await get_code_button.count() > 0:
@@ -268,6 +285,28 @@ class DouYinVideo(object):
                 await page.wait_for_url("https://creator.douyin.com/creator-micro/content/manage**",
                                         timeout=3000)  # 如果自动跳转到作品页面，则代表发布成功
                 douyin_logger.success("  [-]视频发布成功")
+
+                # 发送发布成功通知
+                send_bark_notification("抖音发布成功", f"视频《{self.title}》已成功发布到抖音")
+                try:
+                    import requests
+                    telegram_config = None
+                    try:
+                        from conf import get_telegram_config
+                        telegram_config = get_telegram_config()
+                    except:
+                        pass
+
+                    if telegram_config and telegram_config.get('bot_token') and telegram_config.get('chat_id'):
+                        telegram_text = f"✅ 抖音发布成功\n\n视频：{self.title}"
+                        url = f"https://api.telegram.org/bot{telegram_config['bot_token']}/sendMessage"
+                        requests.post(url, json={
+                            'chat_id': telegram_config['chat_id'],
+                            'text': telegram_text
+                        }, timeout=10)
+                except Exception as e:
+                    douyin_logger.debug(f"  [-] Telegram成功通知失败: {e}")
+
                 # 使用通用工具记录发布历史
                 record_publish_history(
                     platform_id='douyin',

@@ -14,7 +14,6 @@ from utils.network import async_retry
 from myUtils.account_manager import get_current_account
 from pathlib import Path
 # 引入通用工具模块
-from uploader.common import find_cover_image, record_publish_history, wait_for_upload_with_progress
 
 
 async def baijiahao_cookie_gen(account_file):
@@ -160,7 +159,7 @@ class BaiJiaHaoVideo(object):
         )
         # 创建一个浏览器上下文，使用指定的 cookie 文件
         context = await browser.new_context(
-            viewport={"width": 1500, "height": 1200},
+            viewport={"width": 800, "height": 600},
             storage_state=f"{self.account_file}",
             user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.4324.150 Safari/537.36'
         )
@@ -436,7 +435,7 @@ class BaiJiaHaoVideo(object):
         )
         # 创建一个浏览器上下文，使用指定的 cookie 文件
         context = await browser.new_context(
-            viewport={"width": 1600, "height": 900},
+            viewport={"width": 800, "height": 600},
             storage_state=f"{self.account_file}",
             user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.4324.150 Safari/537.36'
         )

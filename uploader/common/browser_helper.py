@@ -42,7 +42,7 @@ async def init_browser_context(playwright, account_file: str,
 
     # 创建上下文
     context_options = {
-        'viewport': {'width': 1920, 'height': 1080},
+        'viewport': {'width': 800, 'height': 600},
         'storage_state': account_file,
     }
 

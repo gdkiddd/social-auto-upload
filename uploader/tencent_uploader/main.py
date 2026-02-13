@@ -13,7 +13,6 @@ from myUtils.publish_history import get_publish_history
 from myUtils.account_manager import get_current_account
 from pathlib import Path
 # 引入通用工具模块
-from uploader.common import find_cover_image, record_publish_history, wait_for_upload_with_progress
 
 
 def format_str_for_short_title(origin_title: str) -> str:
@@ -56,12 +55,14 @@ async def cookie_auth(account_file):
             return True
 
 
-async def get_tencent_cookie(account_file, send_qrcode_notification=False):
+async def get_tencent_cookie(account_file, send_qrcode_notification=False, username=None, video_title=None):
     """获取视频号cookie，智能判断是否需要登录，可选发送二维码通知
 
     Args:
         account_file: cookie保存路径
         send_qrcode_notification: 是否发送Bark二维码通知
+        username: 用户名，用于通知标题
+        video_title: 视频标题，用于通知标题
     """
     from myUtils.auth import extract_and_send_qrcode
 
@@ -71,6 +72,7 @@ async def get_tencent_cookie(account_file, send_qrcode_notification=False):
                 '--lang en-GB'
             ],
             'headless': False,  # 需要显示浏览器窗口才能看到二维码
+            'proxy': None,  # 禁用代理，避免 ERR_PROXY_CONNECTION_FAILED 错误
         }
         # 启动浏览器
         browser = await playwright.chromium.launch(**options)
@@ -125,7 +127,7 @@ async def get_tencent_cookie(account_file, send_qrcode_notification=False):
             # 如果需要发送二维码通知
             if send_qrcode_notification:
                 tencent_logger.info("[+] 正在提取二维码并发送Bark通知...")
-                qrcode_path = await extract_and_send_qrcode(page, account_name="视频号")
+                qrcode_path = await extract_and_send_qrcode(page, account_name="视频号", username=username, video_title=video_title)
                 if qrcode_path:
                     tencent_logger.info(f"[+] 请查看Bark通知，扫描二维码登录")
                     tencent_logger.info(f"[+] 二维码已保存到: {qrcode_path}")
@@ -134,15 +136,92 @@ async def get_tencent_cookie(account_file, send_qrcode_notification=False):
             else:
                 tencent_logger.info("[+] 请查看浏览器窗口，扫描二维码登录")
 
-            # 等待用户扫码登录（不限制等待时间）
+            # 等待用户扫码登录（支持按Y手动确认）
             try:
-                tencent_logger.info("[+] 等待用户扫码登录（不限制等待时间，请及时扫码）...")
-                while True:
+                tencent_logger.info("[+] 等待用户扫码登录（按 Y 键可手动确认已扫码）...")
+                tencent_logger.info("[+] 如已扫码但检测不到，请在终端按 Y + 回车键继续")
+
+                max_wait_time = 300  # 最多等待5分钟
+                wait_time = 0
+                manual_confirm = False
+
+                # 创建一个标志用于手动确认
+                import sys
+                import threading
+                import queue
+
+                input_queue = queue.Queue()
+
+                def listen_for_y_key():
+                    """监听Y键输入"""
+                    try:
+                        while True:
+                            try:
+                                # 使用input()等待用户输入
+                                user_input = input()
+                                if user_input.lower() == 'y':
+                                    input_queue.put('y')
+                                    break
+                            except EOFError:
+                                break
+                            except:
+                                break
+                    except:
+                        pass
+
+                # 启动输入监听线程
+                listener_thread = threading.Thread(target=listen_for_y_key, daemon=True)
+                listener_thread.start()
+
+                while wait_time < max_wait_time and not manual_confirm:
+                    try:
+                        # 非阻塞检查队列
+                        try:
+                            if input_queue.get_nowait() == 'y':
+                                manual_confirm = True
+                                tencent_logger.success("[+] 手动确认登录成功！")
+                                break
+                        except queue.Empty:
+                            pass
+                    except:
+                        pass
+
                     await asyncio.sleep(2)
+                    wait_time += 2
+
                     current_url = page.url
+
+                    # 检查是否跳转到平台页面
                     if "/platform/" in current_url:
-                        tencent_logger.success("[+] 登录成功！")
-                        break
+                        # 额外检查页面元素，确保真的登录成功
+                        try:
+                            # 等待页面加载
+                            await page.wait_for_load_state("networkidle", timeout=5000)
+                            # 检查是否有登录后的元素
+                            if await page.locator('div.input-editor, input[type="file"], .weui-desktop-btn').count() > 0:
+                                tencent_logger.success("[+] 登录成功！")
+                                break
+                        except:
+                            # 页面还在加载，继续等待
+                            pass
+
+                    # 检查是否已经在登录页面但不再显示二维码
+                    if "login" not in current_url and "channels.weixin.qq.com" in current_url:
+                        try:
+                            # 检查是否还有二维码元素
+                            if await page.locator('div.qrcode-wrap, img.qrcode').count() == 0:
+                                tencent_logger.success("[+] 登录成功！（二维码已消失）")
+                                break
+                        except:
+                            pass
+
+                    # 每隔10秒输出一次等待状态
+                    if wait_time % 10 == 0:
+                        tencent_logger.info(f"[+] 等待登录中... ({wait_time}s) [按Y+回车键手动确认]")
+
+                if wait_time >= max_wait_time and not manual_confirm:
+                    tencent_logger.error("[-] 等待登录超时，请检查是否已成功登录")
+
             except Exception as e:
                 tencent_logger.warning(f"[+] 等待登录过程出错: {e}")
 
@@ -154,13 +233,15 @@ async def get_tencent_cookie(account_file, send_qrcode_notification=False):
         await browser.close()
 
 
-async def weixin_setup(account_file, handle=False, auto_login=True):
+async def weixin_setup(account_file, handle=False, auto_login=True, username=None, video_title=None):
     """设置视频号账号，支持自动登录和二维码通知
 
     Args:
         account_file: cookie文件路径
         handle: 是否自动处理cookie失效（打开浏览器）
         auto_login: 是否启用自动登录（发送二维码Bark通知）
+        username: 用户名，用于通知标题
+        video_title: 视频标题，用于通知标题
 
     Returns:
         bool: 是否设置成功
@@ -175,9 +256,9 @@ async def weixin_setup(account_file, handle=False, auto_login=True):
         # 直接进入登录流程
         tencent_logger.info('[+] 准备登录...')
         if auto_login:
-            await get_tencent_cookie(account_file, send_qrcode_notification=True)
+            await get_tencent_cookie(account_file, send_qrcode_notification=True, username=username, video_title=video_title)
         else:
-            await get_tencent_cookie(account_file, send_qrcode_notification=False)
+            await get_tencent_cookie(account_file, send_qrcode_notification=False, username=username, video_title=video_title)
         return await cookie_auth(account_file)
 
     # 检查cookie是否有效（只在不需要自动处理时验证）
@@ -198,9 +279,9 @@ async def weixin_setup(account_file, handle=False, auto_login=True):
         tencent_logger.info('[+] 如果cookie有效，会自动关闭；如果失效，会显示二维码')
 
         if auto_login:
-            await get_tencent_cookie(account_file, send_qrcode_notification=True)
+            await get_tencent_cookie(account_file, send_qrcode_notification=True, username=username, video_title=video_title)
         else:
-            await get_tencent_cookie(account_file, send_qrcode_notification=False)
+            await get_tencent_cookie(account_file, send_qrcode_notification=False, username=username, video_title=video_title)
 
         # 登录后验证cookie
         if await cookie_auth(account_file):
@@ -272,6 +353,7 @@ class TencentVideo(object):
         # 准备浏览器启动选项
         launch_options = {
             'headless': self.headless,
+            'proxy': None,  # 禁用代理，避免 ERR_PROXY_CONNECTION_FAILED 错误
         }
 
         if self.local_executable_path:
@@ -282,7 +364,7 @@ class TencentVideo(object):
         )
         # 创建一个浏览器上下文，使用指定的 cookie 文件
         context = await browser.new_context(
-            viewport={"width": 1500, "height": 1200},
+            viewport={"width": 800, "height": 600},
             storage_state=f"{self.account_file}"
         )
         context = await set_init_script(context)

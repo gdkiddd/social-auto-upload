@@ -12,6 +12,8 @@ from flask import Flask, request, jsonify, Response, render_template, send_from_
 from conf import BASE_DIR
 from myUtils.login import get_tencent_cookie, douyin_cookie_gen, get_ks_cookie, xiaohongshu_cookie_gen, bilibili_cookie_gen, baijiahao_cookie_gen
 from myUtils.postVideo import post_video_tencent, post_video_DouYin, post_video_ks, post_video_xhs
+from myUtils.upload_history import get_upload_history
+from myUtils.upload_history import get_upload_history
 
 active_queues = {}
 app = Flask(__name__)
@@ -78,6 +80,40 @@ def upload_file():
         import traceback
         traceback.print_exc()
         return jsonify({"code":500,"msg": str(e),"data":None}), 500
+
+@app.route('/api/history', methods=['GET'])
+def get_upload_history():
+    """获取上传历史记录"""
+    try:
+        upload_history = get_upload_history()
+        records = upload_history.get_latest_records(limit=100)
+        return jsonify({
+            "code": 200,
+            "data": records
+        })
+    except Exception as e:
+        return jsonify({
+            "code": 500,
+            "msg": str(e)
+        }), 500
+
+
+
+@app.route('/api/history', methods=['GET'])
+def get_upload_history_api():
+    """获取上传历史记录""""
+    try:
+        upload_history = get_upload_history()
+        records = upload_history.get_latest_records(limit=100)
+        return jsonify({
+            "code": 200,
+            "data": records
+        })
+    except Exception as e:
+        return jsonify({
+            "code": 500,
+            "msg": str(e)
+        }), 500
 
 @app.route('/getFile', methods=['GET'])
 def get_file():
