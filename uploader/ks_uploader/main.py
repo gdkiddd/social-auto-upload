@@ -10,7 +10,7 @@ from utils.base_social_media import set_init_script
 from utils.files_times import get_absolute_path
 from utils.log import kuaishou_logger
 from myUtils.account_manager import get_current_account
-from uploader.common import find_cover_image, record_publish_history, wait_for_upload_with_progress
+from uploader.common import find_cover_image, record_publish_history, get_upload_progress
 from pathlib import Path
 import glob
 # 引入通用工具模块
@@ -200,6 +200,69 @@ class KSVideo(object):
             kuaishou_logger.warning(traceback.format_exc())
             # 互动设置失败不影响视频发布
 
+    async def _is_publish_button_ready(self, page):
+        """发布按钮可点击时，视为上传已基本完成。"""
+        publish_button = page.get_by_text("发布", exact=True).first
+        if await publish_button.count() == 0:
+            return False
+
+        disabled = await publish_button.get_attribute("disabled")
+        aria_disabled = await publish_button.get_attribute("aria-disabled")
+        classes = (await publish_button.get_attribute("class")) or ""
+        return not disabled and aria_disabled != "true" and "disabled" not in classes.lower()
+
+    async def wait_upload_complete(self, page):
+        """
+        快手上传完成判定：
+        1) 发布按钮可点击
+        2) 上传中提示消失
+        3) 上传进度到 99% 且稳定一段时间（兜底）
+        """
+        kuaishou_logger.info("  [-] 等待快手上传完成...")
+        wait_time = 0
+        max_wait_time = 240
+        check_interval = 2
+        last_progress = -1
+        stuck_99_count = 0
+
+        while wait_time < max_wait_time:
+            try:
+                if await page.locator("text=上传失败").count() > 0:
+                    kuaishou_logger.error("  [-] 检测到上传失败")
+                    return False
+
+                if await self._is_publish_button_ready(page):
+                    kuaishou_logger.success("视频上传完毕（发布按钮已可点击）")
+                    return True
+
+                uploading_count = await page.locator("text=上传中").count()
+                if uploading_count == 0:
+                    kuaishou_logger.success("视频上传完毕（上传中提示已消失）")
+                    return True
+
+                progress = await get_upload_progress(page)
+                if progress is not None and progress != last_progress:
+                    kuaishou_logger.info(f"  📊 上传进度: {progress}%")
+                    last_progress = progress
+
+                if progress is not None and progress >= 99:
+                    stuck_99_count += 1
+                    if stuck_99_count >= 8:  # 约 16 秒
+                        kuaishou_logger.warning("  [-] 进度长期停留 99%，按上传完成继续")
+                        return True
+                else:
+                    stuck_99_count = 0
+
+                await asyncio.sleep(check_interval)
+                wait_time += check_interval
+            except Exception as e:
+                kuaishou_logger.warning(f"  [-] 上传状态检测异常: {e}")
+                await asyncio.sleep(check_interval)
+                wait_time += check_interval
+
+        kuaishou_logger.warning("  [-] 上传等待超时，继续后续流程")
+        return True
+
     async def upload(self, playwright: Playwright) -> None:
         # 使用 Chromium 浏览器启动一个浏览器实例
         print(self.local_executable_path)
@@ -271,34 +334,7 @@ class KSVideo(object):
             await page.keyboard.type(f"#{tag} ")
             await asyncio.sleep(0.3)
 
-        # 使用通用上传进度监控模块
-        # 快手的上传完成标志：没有"上传中"文本
-        await wait_for_upload_with_progress(
-            page=page,
-            logger=kuaishou_logger,
-            complete_indicators=[],  # 使用空列表，通过自定义逻辑判断完成
-            check_interval=2,
-            max_wait_time=120,  # 快手通常较快，2分钟
-            progress_prefix="📊 上传进度"
-        )
-
-        # 再次检查是否真的完成了（快手特殊处理：检查"上传中"文本是否消失）
-        max_retries = 60
-        retry_count = 0
-
-        while retry_count < max_retries:
-            try:
-                number = await page.locator("text=上传中").count()
-                if number == 0:
-                    kuaishou_logger.success("视频上传完毕")
-                    break
-                await asyncio.sleep(2)
-            except Exception as e:
-                await asyncio.sleep(2)
-            retry_count += 1
-
-        if retry_count == max_retries:
-            kuaishou_logger.warning("超过最大重试次数，视频上传可能未完成。")
+        await self.wait_upload_complete(page)
 
         # 上传封面
         await self.set_cover(page)
