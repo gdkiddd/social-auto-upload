@@ -8,6 +8,7 @@ from conf import LOCAL_CHROME_PATH, LOCAL_CHROME_HEADLESS, get_step_delay
 from utils.base_social_media import set_init_script
 from utils.log import bilibili_logger
 from myUtils.account_manager import get_current_account
+from uploader.common import find_cover_image, record_publish_history, wait_for_upload_with_progress
 # 引入通用工具模块
 
 
@@ -40,7 +41,7 @@ class BilibiliUploader(object):
 
       # 创建浏览器上下文，使用 cookie 文件
       context = await browser.new_context(
-        viewport={"width": 800, "height": 600},
+        viewport={"width": 1024, "height": 768},
         storage_state=f"{self.account_file}"
       )
       context = await set_init_script(context)
@@ -121,14 +122,12 @@ class BilibiliUploader(object):
 
       await asyncio.sleep(self.step_delay)
 
-      # 等待视频上传完成
-      bilibili_logger.info(f'   正在等待视频上传...')
-      await self._wait_video_upload(page)
-      bilibili_logger.success(f'   ✅ 视频上传完成')
-
-      # 填充视频信息
-      await self._fill_video_info(page)
-      bilibili_logger.success(f'   ✅ 视频信息已填充')
+      # 并行执行：边上传边填充标题/简介/标签
+      await asyncio.gather(
+        self._wait_video_upload(page),
+        self._fill_video_info_with_retry(page)
+      )
+      bilibili_logger.success(f'   ✅ 视频上传与信息填充完成')
 
       # 设置封面
       await self._set_cover(page)
@@ -158,11 +157,27 @@ class BilibiliUploader(object):
         progress_prefix="📊 上传进度"
     )
 
+  async def _fill_video_info_with_retry(self, page: Page):
+    """上传过程中反复尝试填充，直到表单可用。"""
+    waited = 0
+    max_wait = 180
+    while waited < max_wait:
+      try:
+        if await self._fill_video_info(page):
+          bilibili_logger.success('   ✅ 视频信息已填充')
+          return
+      except Exception:
+        pass
+      await asyncio.sleep(2)
+      waited += 2
+    bilibili_logger.warning('   [-] 视频信息填充超时，继续后续步骤')
+
   async def _fill_video_info(self, page: Page):
     """填充视频信息：标题、标签、简介"""
     bilibili_logger.info('   [-] 正在填充视频信息...')
 
     await asyncio.sleep(self.step_delay)
+    filled_any = False
 
     # 填充标题
     bilibili_logger.info(f'   [-] 填充标题: {self.title}')
@@ -170,6 +185,7 @@ class BilibiliUploader(object):
     if await title_input.count() > 0:
       await title_input.first.fill(self.title)
       await asyncio.sleep(self.step_delay)
+      filled_any = True
     else:
       bilibili_logger.warning('   [-] 未找到标题输入框')
 
@@ -186,6 +202,7 @@ class BilibiliUploader(object):
 
       await desc_editor.first.fill(desc_content)
       await asyncio.sleep(self.step_delay)
+      filled_any = True
     else:
       bilibili_logger.warning('   [-] 未找到简介输入框')
 
@@ -201,8 +218,11 @@ class BilibiliUploader(object):
           await page.keyboard.press('Enter')
           await asyncio.sleep(0.3)
         await asyncio.sleep(self.step_delay)
+        filled_any = True
       else:
         bilibili_logger.warning('   [-] 未找到标签输入框')
+
+    return filled_any
 
   async def _set_cover(self, page: Page):
     """设置视频封面"""

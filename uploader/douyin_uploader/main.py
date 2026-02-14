@@ -9,6 +9,7 @@ from conf import LOCAL_CHROME_PATH, LOCAL_CHROME_HEADLESS
 from utils.base_social_media import set_init_script
 from utils.log import douyin_logger
 from myUtils.account_manager import get_current_account
+from uploader.common import find_cover_image, record_publish_history, wait_for_upload_with_progress
 from pathlib import Path
 # 引入通用工具模块
 # 引入通知功能
@@ -123,7 +124,7 @@ class DouYinVideo(object):
         )
         # 创建一个浏览器上下文，使用指定的 cookie 文件
         context = await browser.new_context(
-            viewport={"width": 800, "height": 600},
+            viewport={"width": 1024, "height": 768},
             storage_state=f"{self.account_file}"
         )
         context = await set_init_script(context)
@@ -627,5 +628,4 @@ class DouYinVideo(object):
     async def main(self):
         async with async_playwright() as playwright:
             await self.upload(playwright)
-
 

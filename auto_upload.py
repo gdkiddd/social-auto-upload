@@ -18,7 +18,6 @@ import json
 import shutil
 import subprocess
 import requests
-import re
 from datetime import datetime
 from pathlib import Path
 
@@ -27,10 +26,16 @@ SCRIPT_DIR = Path(__file__).parent.resolve()
 os.chdir(SCRIPT_DIR)
 
 # 现在导入模块
-from conf import load_config, save_config, is_platform_enabled, get_bark_url
+from conf import is_platform_enabled, get_bark_url
 from myUtils.account_manager import (
     get_accounts, set_current_account, get_current_account,
-    check_account_cookie_exists, get_account_cookie_path
+    check_account_cookie_exists
+)
+from myUtils.video_project import (
+    load_uploading_info,
+    save_uploading_info,
+    clear_uploading_info,
+    get_next_video_folder,
 )
 
 # 配置
@@ -46,9 +51,9 @@ PLATFORMS = [
     {'id': 'xiaohongshu', 'name': '小红书'},
     {'id': 'bilibili', 'name': 'Bilibili'},
     {'id': 'kuaishou', 'name': '快手'},
-    {'id': 'baijiahao', 'name': '百家号'},
     {'id': 'douyin', 'name': '抖音'},
-    {'id': 'tencent', 'name': '视频号'}
+    {'id': 'tencent', 'name': '视频号'},
+    {'id': 'baijiahao', 'name': '百家号'}
 ]
 
 # 上传脚本映射
@@ -205,63 +210,6 @@ def is_platform_uploaded(video_folder_name, platform_id, logger):
     return False
 
 
-def extract_folder_number(folder_name):
-    """从文件夹名中提取序号
-
-    例如: "1) 跑滴滴..." -> 1
-         "10) 36岁..." -> 10
-    """
-    # 匹配开头的数字序号
-    match = re.match(r'^(\d+)\)', folder_name)
-    if match:
-        return int(match.group(1))
-    return None
-
-
-def load_uploading_info(logger):
-    """加载当前正在上传的视频信息
-
-    Returns:
-        dict: 包含 folder_path, folder_name, folder_number 的字典，如果没有记录则返回 None
-    """
-    if not UPLOADING_JSON_FILE.exists():
-        logger.info("未找到上传中记录文件，将选择下一个视频")
-        return None
-
-    try:
-        with open(UPLOADING_JSON_FILE, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            logger.info(f"读取上传中记录: {data.get('folder_name')}")
-            return data
-    except Exception as e:
-        logger.warning(f"读取上传中记录失败: {e}，将选择下一个视频")
-        return None
-
-
-def save_uploading_info(folder_number, folder_name, folder_path, logger):
-    """保存当前正在上传的视频信息
-
-    Args:
-        folder_number: 视频文件夹序号
-        folder_name: 视频文件夹名称
-        folder_path: 视频文件夹完整路径
-    """
-    try:
-        data = {
-            'folder_number': folder_number,
-            'folder_name': folder_name,
-            'folder_path': str(folder_path),
-            'update_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        }
-
-        with open(UPLOADING_JSON_FILE, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-
-        logger.success(f"上传中记录已更新: {folder_name}")
-    except Exception as e:
-        logger.error(f"保存上传中记录失败: {e}")
-
-
 def load_upload_history(logger):
     """加载上传历史记录
 
@@ -340,57 +288,6 @@ def add_upload_history(folder_name, upload_results, logger):
     save_upload_history(history, logger)
 
     logger.success(f"已添加上传历史: {folder_name} - {result}")
-
-
-def get_next_video_folder(logger, current_number=None):
-    """获取下一个待上传的视频文件夹
-
-    Args:
-        current_number: 当前视频序号，如果指定则从该序号之后查找
-
-    Returns:
-        tuple: (folder_number, folder_path) 下一个视频文件夹信息，如果没有则返回 (None, None)
-    """
-    logger.info(f"扫描源目录: {SOURCE_DIR}")
-
-    if not SOURCE_DIR.exists():
-        logger.error(f"源目录不存在: {SOURCE_DIR}")
-        return None, None
-
-    # 获取所有子文件夹（排除隐藏文件和配置文件）
-    folders = [f for f in SOURCE_DIR.iterdir()
-               if f.is_dir() and not f.name.startswith('.')]
-
-    if not folders:
-        logger.error("源目录下没有找到视频文件夹")
-        return None, None
-
-    # 提取每个文件夹的序号
-    folder_numbers = []
-    for folder in folders:
-        number = extract_folder_number(folder.name)
-        if number is not None:
-            folder_numbers.append((number, folder))
-
-    if not folder_numbers:
-        logger.error("没有找到带序号的视频文件夹（格式：序号) 标题）")
-        return None, None
-
-    # 按序号排序
-    folder_numbers.sort(key=lambda x: x[0])
-
-    # 确定起始序号
-    start_number = current_number if current_number is not None else 0
-
-    # 找到下一个序号的文件夹
-    for number, folder in folder_numbers:
-        if number > start_number:
-            logger.info(f"找到下一个视频: 序号 {number} - {folder.name}")
-            logger.info(f"起始序号: {start_number}")
-            return number, folder
-
-    logger.warning(f"所有视频都已上传完成（起始序号: {start_number}）")
-    return None, None
 
 
 def switch_account(account_name, logger):
@@ -514,7 +411,7 @@ def main():
         # 1. 检查是否有正在上传的视频
         logger.divider()
         logger.info("步骤 1: 检查上传状态")
-        uploading_info = load_uploading_info(logger)
+        uploading_info = load_uploading_info(uploading_json=UPLOADING_JSON_FILE, logger=logger)
 
         if uploading_info:
             # 继续上传之前的视频
@@ -526,7 +423,7 @@ def main():
         else:
             # 获取下一个待上传的视频
             logger.info("获取下一个待上传视频")
-            folder_number, folder_path = get_next_video_folder(logger)
+            folder_number, folder_path = get_next_video_folder(SOURCE_DIR, logger=logger)
             if not folder_path:
                 send_bark_notification("自动上传结束", "所有视频已上传完成", logger)
                 return
@@ -535,7 +432,13 @@ def main():
             logger.success(f"选择视频: 序号 {folder_number} - {folder_name}")
 
             # 保存到 uploading.json
-            save_uploading_info(folder_number, folder_name, folder_path, logger)
+            save_uploading_info(
+                folder_number,
+                folder_name,
+                folder_path,
+                uploading_json=UPLOADING_JSON_FILE,
+                logger=logger
+            )
 
         # 2. 切换到 Amy 账户
         logger.divider()
@@ -616,17 +519,22 @@ def main():
             status_summary = f"所有平台上传成功 ({uploaded_platforms}/{total_enabled})"
 
             # 尝试获取下一个视频，更新 uploading.json
-            next_number, next_folder = get_next_video_folder(logger, current_number=folder_number)
+            next_number, next_folder = get_next_video_folder(
+                SOURCE_DIR, current_number=folder_number, logger=logger
+            )
             if next_folder:
-                save_uploading_info(next_number, next_folder.name, next_folder, logger)
+                save_uploading_info(
+                    next_number,
+                    next_folder.name,
+                    next_folder,
+                    uploading_json=UPLOADING_JSON_FILE,
+                    logger=logger
+                )
                 logger.info(f"✅ 已准备下一个视频: 序号 {next_number} - {next_folder.name}")
             else:
                 # 没有下一个视频了，删除 uploading.json
-                try:
-                    UPLOADING_JSON_FILE.unlink()
-                    logger.success("✅ 所有视频已上传完成")
-                except:
-                    pass
+                clear_uploading_info(uploading_json=UPLOADING_JSON_FILE, logger=logger)
+                logger.success("✅ 所有视频已上传完成")
         else:
             title = "⚠️ 自动上传部分完成"
             status_summary = f"进度: {uploaded_platforms}/{total_enabled} 个平台成功"

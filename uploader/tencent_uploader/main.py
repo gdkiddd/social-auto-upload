@@ -9,9 +9,7 @@ from conf import LOCAL_CHROME_PATH, LOCAL_CHROME_HEADLESS
 from utils.base_social_media import set_init_script
 from utils.files_times import get_absolute_path
 from utils.log import tencent_logger
-from myUtils.publish_history import get_publish_history
-from myUtils.account_manager import get_current_account
-from pathlib import Path
+from uploader.common import record_publish_history
 # 引入通用工具模块
 
 
@@ -364,7 +362,7 @@ class TencentVideo(object):
         )
         # 创建一个浏览器上下文，使用指定的 cookie 文件
         context = await browser.new_context(
-            viewport={"width": 800, "height": 600},
+            viewport={"width": 1024, "height": 768},
             storage_state=f"{self.account_file}"
         )
         context = await set_init_script(context)
@@ -433,14 +431,11 @@ class TencentVideo(object):
                     # 等待跳转到草稿箱页面或确认保存成功
                     await page.wait_for_url("**/post/list**", timeout=5000)  # 使用通配符匹配包含post/list的URL
                     tencent_logger.success("  [-]视频草稿保存成功")
-                    # 记录发布历史
-                    publish_history = get_publish_history()
-                    publish_history.add_record(
+                    record_publish_history(
                         platform_id='tencent',
                         platform_name='视频号',
-                        video_file=Path(self.file_path).name,
-                        status='success',
-                        account=get_current_account()
+                        video_file_path=self.file_path,
+                        status='success'
                     )
                 else:
                     # 点击"发表"按钮
@@ -449,14 +444,11 @@ class TencentVideo(object):
                         await publish_button.click()
                     await page.wait_for_url("https://channels.weixin.qq.com/platform/post/list", timeout=5000)
                     tencent_logger.success("  [-]视频发布成功")
-                    # 记录发布历史
-                    publish_history = get_publish_history()
-                    publish_history.add_record(
+                    record_publish_history(
                         platform_id='tencent',
                         platform_name='视频号',
-                        video_file=Path(self.file_path).name,
-                        status='success',
-                        account=get_current_account()
+                        video_file_path=self.file_path,
+                        status='success'
                     )
                 break
             except Exception as e:
@@ -465,28 +457,22 @@ class TencentVideo(object):
                     # 检查是否在草稿相关的页面
                     if "post/list" in current_url or "draft" in current_url:
                         tencent_logger.success("  [-]视频草稿保存成功")
-                        # 记录发布历史
-                        publish_history = get_publish_history()
-                        publish_history.add_record(
+                        record_publish_history(
                             platform_id='tencent',
                             platform_name='视频号',
-                            video_file=Path(self.file_path).name,
-                            status='success',
-                            account=get_current_account()
+                            video_file_path=self.file_path,
+                            status='success'
                         )
                         break
                 else:
                     # 检查是否在发布列表页面
                     if "https://channels.weixin.qq.com/platform/post/list" in current_url:
                         tencent_logger.success("  [-]视频发布成功")
-                        # 记录发布历史
-                        publish_history = get_publish_history()
-                        publish_history.add_record(
+                        record_publish_history(
                             platform_id='tencent',
                             platform_name='视频号',
-                            video_file=Path(self.file_path).name,
-                            status='success',
-                            account=get_current_account()
+                            video_file_path=self.file_path,
+                            status='success'
                         )
                         break
                 tencent_logger.exception(f"  [-] Exception: {e}")

@@ -10,6 +10,7 @@ from utils.base_social_media import set_init_script
 from utils.files_times import get_absolute_path
 from utils.log import kuaishou_logger
 from myUtils.account_manager import get_current_account
+from uploader.common import find_cover_image, record_publish_history, wait_for_upload_with_progress
 from pathlib import Path
 import glob
 # 引入通用工具模块
@@ -80,6 +81,25 @@ class KSVideo(object):
     async def handle_upload_error(self, page):
         kuaishou_logger.error("视频出错了，重新上传中")
         await page.locator('div.progress-div [class^="upload-btn-input"]').set_input_files(self.file_path)
+
+    async def dismiss_onboarding_dialog(self, page):
+        """处理首次登录新手导览弹窗，检测到则自动跳过。"""
+        selectors = [
+            'div._close_d7f44_29[title="Skip"]',
+            'div._close_d7f44_29[aria-label="Skip"][data-action="skip"]',
+            'div[role="button"][title="Skip"][data-action="skip"]',
+        ]
+        for selector in selectors:
+            try:
+                skip_btn = page.locator(selector).first
+                if await skip_btn.count() > 0 and await skip_btn.is_visible():
+                    await skip_btn.click()
+                    kuaishou_logger.info("  [-] 检测到新手导览，已自动点击跳过")
+                    await asyncio.sleep(0.5)
+                    return True
+            except Exception:
+                continue
+        return False
 
     async def set_cover(self, page):
         """设置视频封面"""
@@ -195,7 +215,7 @@ class KSVideo(object):
 
         browser = await playwright.chromium.launch(**launch_options)
         context = await browser.new_context(
-            viewport={"width": 800, "height": 600},
+            viewport={"width": 1024, "height": 768},
             storage_state=f"{self.account_file}"
         )
         context = await set_init_script(context)
@@ -224,12 +244,19 @@ class KSVideo(object):
         await asyncio.sleep(1)
 
         # 等待按钮可交互
+        await self.dismiss_onboarding_dialog(page)
         new_feature_button = page.locator('button[type="button"] span:text("我知道了")')
         if await new_feature_button.count() > 0:
             await new_feature_button.click()
 
+        # 再次兜底，避免填充前弹窗盖住输入区域
+        await self.dismiss_onboarding_dialog(page)
         kuaishou_logger.info("正在填充标题和话题...")
-        await page.get_by_text("描述").locator("xpath=following-sibling::div").click()
+        try:
+            await page.get_by_text("描述").locator("xpath=following-sibling::div").click()
+        except Exception:
+            await self.dismiss_onboarding_dialog(page)
+            await page.get_by_text("描述").locator("xpath=following-sibling::div").click()
         kuaishou_logger.info("clear existing title")
         await page.keyboard.press("Backspace")
         await page.keyboard.press("Control+KeyA")

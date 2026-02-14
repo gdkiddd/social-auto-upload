@@ -2,13 +2,11 @@
 import pathlib
 import asyncio
 from playwright.async_api import async_playwright, Page
-from pathlib import Path
 
 from conf import LOCAL_CHROME_PATH, LOCAL_CHROME_HEADLESS, get_step_delay
 from utils.base_social_media import set_init_script
 from utils.log import youtube_logger
-from myUtils.publish_history import get_publish_history
-from myUtils.account_manager import get_current_account
+from uploader.common import record_publish_history
 
 
 class YouTubeUploader(object):
@@ -39,7 +37,7 @@ class YouTubeUploader(object):
         user_data_dir=chrome_user_data_dir,
         headless=self.headless,
         executable_path=self.local_executable_path,
-        viewport={'width': 800, 'height': 600},
+        viewport={'width': 1024, 'height': 768},
         locale='zh-CN',
         timezone_id='Asia/Shanghai',
         args=[
@@ -145,13 +143,11 @@ class YouTubeUploader(object):
       youtube_logger.info('   [-] 浏览器已关闭')
 
       # 记录发布历史
-      publish_history = get_publish_history()
-      publish_history.add_record(
+      record_publish_history(
         platform_id='youtube',
         platform_name='YouTube',
-        video_file=self.file.name,
+        video_file_path=str(self.file),
         status='success',
-        account=get_current_account()
       )
 
       return True

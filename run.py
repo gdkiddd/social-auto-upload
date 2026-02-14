@@ -60,14 +60,6 @@ PLATFORMS = [
         'has_browser': True
     },
     {
-        'id': 'baijiahao',
-        'name': '百家号',
-        'cookie_file': 'baijiahao',
-        'script': 'examples/upload_video_to_baijiahao.py',
-        'login_script': 'examples/get_baijiahao_cookie.py',
-        'has_browser': True
-    },
-    {
         'id': 'douyin',
         'name': '抖音',
         'cookie_file': 'douyin',
@@ -81,6 +73,14 @@ PLATFORMS = [
         'cookie_file': 'tencent',
         'script': 'examples/upload_video_to_tencent.py',
         'login_script': 'examples/get_tencent_cookie.py',
+        'has_browser': True
+    },
+    {
+        'id': 'baijiahao',
+        'name': '百家号',
+        'cookie_file': 'baijiahao',
+        'script': 'examples/upload_video_to_baijiahao.py',
+        'login_script': 'examples/get_baijiahao_cookie.py',
         'has_browser': True
     }
 ]
@@ -438,12 +438,17 @@ def show_upload_history():
 
 
 def show_publish_history():
-    """显示发布历史记录"""
+    """显示发布历史记录（兼容旧入口，实际读取上传历史）"""
     print("\n" + "=" * 60)
     print("📊 发布历史记录")
     print("=" * 60)
 
-    publish_history = get_publish_history()
+    upload_history = get_upload_history()
+    records = upload_history.get_latest_records(limit=100)
+    if not records:
+        print("\n暂无发布记录")
+        input("\n按回车键继续...")
+        return
 
     print("\n选择查看方式：")
     print("  [1] 查看各平台最新记录")
@@ -457,12 +462,44 @@ def show_publish_history():
     if choice == '0':
         return
     elif choice == '1':
-        # 显示各平台最新记录
-        publish_history.display_latest_by_platform()
+        platform_names = {
+            'xiaohongshu': '小红书',
+            'tencent': '视频号',
+            'bilibili': 'Bilibili',
+            'douyin': '抖音',
+            'kuaishou': '快手',
+            'baijiahao': '百家号',
+            'youtube': 'YouTube'
+        }
+        latest_by_platform = {}
+        for record in records:
+            details = record.get('details', {}) or {}
+            for platform_id, result in details.items():
+                if platform_id not in latest_by_platform:
+                    latest_by_platform[platform_id] = (record, result)
+        print()
+        for platform_id in ['xiaohongshu', 'tencent', 'bilibili', 'douyin', 'kuaishou', 'baijiahao', 'youtube']:
+            if platform_id in latest_by_platform:
+                record, result = latest_by_platform[platform_id]
+                icon = "✅" if result == "成功" else "❌"
+                print(f"{icon} {platform_names.get(platform_id, platform_id):10s} - {result}")
+                print(f"   视频: {record.get('video', '-')}")
+                print(f"   时间: {record.get('date', '-')}")
+            else:
+                print(f"⊘ {platform_names.get(platform_id, platform_id):10s} - 未发布")
+            print()
     elif choice == '2':
-        # 显示所有记录
-        records = publish_history.get_latest_records(limit=20)
-        publish_history.display_records(records)
+        print()
+        for idx, record in enumerate(records[:20], 1):
+            result_icon = "✅" if record.get('result') == 'success' else "❌"
+            print(f"[{idx}] {result_icon} {record.get('date', '-')}")
+            print(f"    账号: {record.get('account', '-')}")
+            print(f"    视频: {record.get('video', '-')}")
+            details = record.get('details', {}) or {}
+            if details:
+                detail_text = " | ".join([f"{k}:{v}" for k, v in details.items()])
+                print(f"    平台: {detail_text}")
+            print()
     else:
         print("\n❌ 无效的选项")
 

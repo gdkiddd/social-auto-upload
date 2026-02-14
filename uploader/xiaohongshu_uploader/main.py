@@ -8,9 +8,7 @@ import asyncio
 from conf import LOCAL_CHROME_PATH, LOCAL_CHROME_HEADLESS
 from utils.base_social_media import set_init_script
 from utils.log import xiaohongshu_logger
-from myUtils.publish_history import get_publish_history
-from myUtils.account_manager import get_current_account
-from pathlib import Path
+from uploader.common import record_publish_history
 # 引入通用工具模块
 
 
@@ -130,7 +128,7 @@ class XiaoHongShuVideo(object):
         )
         # 创建一个浏览器上下文，使用指定的 cookie 文件
         context = await browser.new_context(
-            viewport={"width": 800, "height": 600},
+            viewport={"width": 1024, "height": 768},
             storage_state=f"{self.account_file}"
         )
         context = await set_init_script(context)
@@ -146,165 +144,17 @@ class XiaoHongShuVideo(object):
         # 点击 "上传视频" 按钮
         await page.locator("div[class^='upload-content'] input[class='upload-input']").set_input_files(self.file_path)
 
-        # 使用通用上传进度监控模块
-        # 小红书的上传完成标志：在stage元素中包含"上传成功"文本
-        xiaohongshu_logger.info("  [-] 等待视频上传...")
-
-        wait_time = 0
-        max_wait_time = 600  # 最大等待10分钟
-        last_progress = 0
-
-        while wait_time < max_wait_time:
-            try:
-                # 检查小红书特有的上传完成标志
-                upload_input = await page.wait_for_selector('input.upload-input', timeout=3000)
-                preview_new = await upload_input.query_selector(
-                    'xpath=following-sibling::div[contains(@class, "preview-new")]')
-
-                if preview_new:
-                    stage_elements = await preview_new.query_selector_all('div.stage')
-                    upload_success = False
-                    for stage in stage_elements:
-                        text_content = await page.evaluate('(element) => element.textContent', stage)
-                        if '上传成功' in text_content:
-                            upload_success = True
-                            break
-
-                    if upload_success:
-                        xiaohongshu_logger.success("  [-] 视频上传成功!")
-                        break
-
-                # 尝试获取上传进度
-                progress = await self._get_upload_progress(page)
-                if progress and progress != last_progress:
-                    xiaohongshu_logger.info(f'  📊 上传进度: {progress}%')
-                    last_progress = progress
-
-                xiaohongshu_logger.info("  [-] 正在上传视频中...")
-                await asyncio.sleep(2)
-                wait_time += 2
-
-            except Exception as e:
-                xiaohongshu_logger.info(f"  [-] 检测过程出错: {str(e)}，重新尝试...")
-                await asyncio.sleep(1)
-                wait_time += 1
-
-    async def _get_upload_progress(self, page: Page):
-        """获取小红书上传进度"""
-        from uploader.common import get_upload_progress
-        return await get_upload_progress(page)
-
-        # 填充标题和话题
-        # 检查是否存在包含输入框的元素
-        # 这里为了避免页面变化，故使用相对位置定位：作品标题父级右侧第一个元素的input子元素
-        await asyncio.sleep(1)
-        xiaohongshu_logger.info(f'  [-] 正在填充标题和话题...')
-        title_container = page.locator('div.plugin.title-container').locator('input.d-text')
-        if await title_container.count():
-            await title_container.fill(self.title[:30])
-            await asyncio.sleep(1)
-        else:
-            titlecontainer = page.locator(".notranslate")
-            await titlecontainer.click()
-            await asyncio.sleep(1)
-            await page.keyboard.press("Backspace")
-            await page.keyboard.press("Control+KeyA")
-            await page.keyboard.press("Delete")
-            await page.keyboard.type(self.title)
-            await asyncio.sleep(1)
-            await page.keyboard.press("Enter")
-            await asyncio.sleep(1)
-        css_selector = ".ql-editor" # 不能加上 .ql-blank 属性，这样只能获取第一次非空状态
-        # 等待话题输入框准备就绪
-        try:
-            await page.wait_for_selector(css_selector, timeout=10000)
-            xiaohongshu_logger.info("  [-] 话题输入框已就绪")
-        except:
-            xiaohongshu_logger.warning("  [-] 未找到话题输入框，跳过标签添加")
-            css_selector = None
-
-        if css_selector:
-            for index, tag in enumerate(self.tags, start=1):
-                try:
-                    # 点击输入框确保焦点
-                    await page.click(css_selector, timeout=5000)
-                    await asyncio.sleep(0.3)
-                    # 输入标签
-                    await page.type(css_selector, "#" + tag)
-                    await asyncio.sleep(0.3)
-                    # 按空格确认标签
-                    await page.keyboard.press("Space")
-                    xiaohongshu_logger.info(f"  [-] 已添加标签 #{tag}")
-                    await asyncio.sleep(0.3)
-                except Exception as e:
-                    xiaohongshu_logger.warning(f"  [-] 添加标签 #{tag} 失败: {str(e)}")
-                    continue
-            xiaohongshu_logger.info(f'总共添加{len(self.tags)}个话题')
-            await asyncio.sleep(1)
-
-        # while True:
-        #     # 判断重新上传按钮是否存在，如果不存在，代表视频正在上传，则等待
-        #     try:
-        #         #  新版：定位重新上传
-        #         number = await page.locator('[class^="long-card"] div:has-text("重新上传")').count()
-        #         if number > 0:
-        #             xiaohongshu_logger.success("  [-]视频上传完毕")
-        #             break
-        #         else:
-        #             xiaohongshu_logger.info("  [-] 正在上传视频中...")
-        #             await asyncio.sleep(2)
-
-        #             if await page.locator('div.progress-div > div:has-text("上传失败")').count():
-        #                 xiaohongshu_logger.error("  [-] 发现上传出错了... 准备重试")
-        #                 await self.handle_upload_error(page)
-        #     except:
-        #         xiaohongshu_logger.info("  [-] 正在上传视频中...")
-        #         await asyncio.sleep(2)
-        
-        # 上传视频封面
-        # await self.set_thumbnail(page, self.thumbnail_path)
-
-        # 更换可见元素
-        # await self.set_location(page, "青岛市")
-
-        # # 頭條/西瓜
-        # third_part_element = '[class^="info"] > [class^="first-part"] div div.semi-switch'
-        # # 定位是否有第三方平台
-        # if await page.locator(third_part_element).count():
-        #     # 检测是否是已选中状态
-        #     if 'semi-switch-checked' not in await page.eval_on_selector(third_part_element, 'div => div.className'):
-        #         await page.locator(third_part_element).locator('input.semi-switch-native-control').click()
+        # 并行执行：边上传边填充标题/内容/标签
+        await asyncio.gather(
+            self._wait_video_upload(page),
+            self._fill_title_and_tags_with_retry(page)
+        )
 
         if self.publish_date != 0:
             await self.set_schedule_time_xiaohongshu(page, self.publish_date)
 
-        # 判断视频是否发布成功
-        while True:
-            try:
-                # 等待包含"定时发布"文本的button元素出现并点击
-                if self.publish_date != 0:
-                    await page.locator('button:has-text("定时发布")').click()
-                else:
-                    await page.locator('button:has-text("发布")').click()
-                await page.wait_for_url(
-                    "https://creator.xiaohongshu.com/publish/success?**",
-                    timeout=3000
-                )  # 如果自动跳转到作品页面，则代表发布成功
-                xiaohongshu_logger.success("  [-]视频发布成功")
-                # 记录发布历史
-                publish_history = get_publish_history()
-                publish_history.add_record(
-                    platform_id='xiaohongshu',
-                    platform_name='小红书',
-                    video_file=Path(self.file_path).name,
-                    status='success',
-                    account=get_current_account()
-                )
-                break
-            except:
-                xiaohongshu_logger.info("  [-] 视频正在发布中...")
-                await page.screenshot(full_page=True)
-                await asyncio.sleep(0.5)
+        # 发布并等待成功
+        await self._publish_video(page)
 
         await context.storage_state(path=self.account_file)  # 保存cookie
         xiaohongshu_logger.success('  [-]cookie更新完毕！')
@@ -314,6 +164,170 @@ class XiaoHongShuVideo(object):
         await context.close()
         await browser.close()
         xiaohongshu_logger.info('  [-] 浏览器已关闭')
+
+    async def _get_upload_progress(self, page: Page):
+        """获取小红书上传进度"""
+        from uploader.common import get_upload_progress
+        return await get_upload_progress(page)
+
+    async def _is_upload_ready(self, page: Page) -> bool:
+        """判断小红书上传是否已完成（可进入下一步填写信息）。"""
+        success_indicators = [
+            'text="上传成功"',
+            'text="重新上传"',
+            'div.stage:has-text("上传成功")',
+        ]
+        for selector in success_indicators:
+            if await page.locator(selector).count() > 0:
+                return True
+
+        # 某些页面没有明确“上传成功”文案，但会出现可点击的发布按钮
+        button = page.locator('button:has-text("发布"), button:has-text("定时发布")').first
+        if await button.count() > 0:
+            disabled = await button.get_attribute("disabled")
+            aria_disabled = await button.get_attribute("aria-disabled")
+            classes = (await button.get_attribute("class")) or ""
+            if not disabled and aria_disabled != "true" and "disabled" not in classes.lower():
+                return True
+        return False
+
+    async def _wait_video_upload(self, page: Page):
+        xiaohongshu_logger.info("  [-] 等待视频上传...")
+        wait_time = 0
+        max_wait_time = 600
+        last_progress = -1
+
+        while wait_time < max_wait_time:
+            try:
+                if await self._is_upload_ready(page):
+                    xiaohongshu_logger.success("  [-] 视频上传成功!")
+                    return
+
+                progress = await self._get_upload_progress(page)
+                if progress is not None and progress != last_progress:
+                    xiaohongshu_logger.info(f'  📊 上传进度: {progress}%')
+                    last_progress = progress
+
+                if await page.locator('text="上传失败"').count() > 0:
+                    xiaohongshu_logger.error("  [-] 检测到上传失败，准备重试")
+                    await self.handle_upload_error(page)
+
+                xiaohongshu_logger.info("  [-] 正在上传视频中...")
+                await asyncio.sleep(2)
+                wait_time += 2
+            except Exception as e:
+                xiaohongshu_logger.info(f"  [-] 检测过程出错: {str(e)}，重新尝试...")
+                await asyncio.sleep(1)
+                wait_time += 1
+
+        xiaohongshu_logger.warning("  [-] 上传等待超时，继续后续步骤尝试发布")
+
+    async def _fill_title_and_tags_with_retry(self, page: Page):
+        """等待编辑区可用后填充，避免上传过程中元素尚未渲染。"""
+        max_wait = 180
+        waited = 0
+        while waited < max_wait:
+            try:
+                if await self._fill_title_and_tags(page):
+                    return
+            except Exception:
+                pass
+            await asyncio.sleep(2)
+            waited += 2
+        xiaohongshu_logger.warning("  [-] 标题/内容填充超时，继续后续流程")
+
+    async def _fill_title_and_tags(self, page: Page):
+        await asyncio.sleep(1)
+        xiaohongshu_logger.info('  [-] 正在填充标题和话题...')
+
+        # 标题输入框：兼容新版 d-text 输入框
+        title_selectors = [
+            'input.d-text[placeholder*="填写标题"]',
+            'input[placeholder*="填写标题"]',
+            'input.d-text',
+        ]
+        title_filled = False
+        for selector in title_selectors:
+            try:
+                title_input = page.locator(selector).first
+                if await title_input.count() > 0 and await title_input.is_visible():
+                    await title_input.click()
+                    await title_input.fill(self.title[:30])
+                    title_filled = True
+                    break
+            except Exception:
+                continue
+        if not title_filled:
+            xiaohongshu_logger.warning("  [-] 未找到标题输入框，跳过标题填充")
+
+        # 正文/话题输入框：兼容 ProseMirror 新版编辑器
+        content_selectors = [
+            '.ProseMirror[contenteditable="true"]',
+            '.ProseMirror',
+            'p[data-placeholder*="输入正文描述"]',
+        ]
+        content_editor = None
+        for selector in content_selectors:
+            try:
+                locator = page.locator(selector).first
+                if await locator.count() > 0:
+                    content_editor = locator
+                    break
+            except Exception:
+                continue
+
+        if content_editor is None:
+            xiaohongshu_logger.warning("  [-] 未找到正文输入框，跳过话题添加")
+            return title_filled
+
+        try:
+            await content_editor.click(timeout=5000)
+            await page.keyboard.press("Control+KeyA")
+            await page.keyboard.press("Delete")
+            await asyncio.sleep(0.2)
+        except Exception:
+            pass
+
+        try:
+            await page.keyboard.type(self.title[:100])
+            await page.keyboard.press("Enter")
+            await asyncio.sleep(0.2)
+        except Exception:
+            pass
+
+        if self.tags:
+            for tag in self.tags:
+                try:
+                    await page.keyboard.type(f"#{tag} ")
+                    await asyncio.sleep(0.2)
+                    xiaohongshu_logger.info(f"  [-] 已添加标签 #{tag}")
+                except Exception as e:
+                    xiaohongshu_logger.warning(f"  [-] 添加标签 #{tag} 失败: {str(e)}")
+            xiaohongshu_logger.info(f'总共添加{len(self.tags)}个话题')
+        return True
+
+    async def _publish_video(self, page: Page):
+        while True:
+            try:
+                if self.publish_date != 0:
+                    await page.locator('button:has-text("定时发布")').click()
+                else:
+                    await page.locator('button:has-text("发布")').click()
+                await page.wait_for_url(
+                    "https://creator.xiaohongshu.com/publish/success?**",
+                    timeout=3000
+                )
+                xiaohongshu_logger.success("  [-]视频发布成功")
+                record_publish_history(
+                    platform_id='xiaohongshu',
+                    platform_name='小红书',
+                    video_file_path=self.file_path,
+                    status='success'
+                )
+                return
+            except Exception:
+                xiaohongshu_logger.info("  [-] 视频正在发布中...")
+                await asyncio.sleep(0.5)
     
     async def set_thumbnail(self, page: Page, thumbnail_path: str):
         if thumbnail_path:
@@ -436,5 +450,3 @@ class XiaoHongShuVideo(object):
     async def main(self):
         async with async_playwright() as playwright:
             await self.upload(playwright)
-
-

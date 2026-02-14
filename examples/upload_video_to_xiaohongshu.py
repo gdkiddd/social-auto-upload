@@ -7,15 +7,15 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from conf import BASE_DIR
 from myUtils.account_manager import get_current_account, get_account_cookie_path
 from myUtils.video_project import get_video_project_files
 from uploader.xiaohongshu_uploader.main import xiaohongshu_setup, XiaoHongShuVideo
-from utils.files_times import generate_schedule_time_next_day, get_title_and_hashtags
+from utils.files_times import get_title_and_hashtags
 
 
 if __name__ == '__main__':
     from conf import load_config
+    MAX_XHS_TITLE_LEN = 20
 
     current_account = get_current_account()
     account_file = get_account_cookie_path(current_account, 'xiaohongshu')
@@ -37,6 +37,22 @@ if __name__ == '__main__':
     # 获取视频项目文件（使用通用函数）
     project_dir, files = get_video_project_files()
     file_num = len(files)
+
+    # 上传前先校验标题长度，超限直接提示并停止
+    invalid_titles = []
+    for file in files:
+        title, _ = get_title_and_hashtags(str(file))
+        title_len = len(title.strip())
+        if title_len > MAX_XHS_TITLE_LEN:
+            invalid_titles.append((file, title, title_len))
+
+    if invalid_titles:
+        print("\n❌ 小红书标题超出限制（最多20字），请先修改后再上传：")
+        for file, title, title_len in invalid_titles:
+            print(f"  - 文件: {file.name}")
+            print(f"    长度: {title_len} 字")
+            print(f"    标题: {title}")
+        sys.exit(1)
 
     cookie_setup = asyncio.run(xiaohongshu_setup(account_file, handle=False))
     for index, file in enumerate(files):
