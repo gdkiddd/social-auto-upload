@@ -63,9 +63,17 @@ class BilibiliUploader(object):
       # 点击上传视频按钮，选择视频文件
       bilibili_logger.info(f'   正在选择视频文件...')
 
-      # 等待页面完全加载
+      # 等待页面完全加载 - 等待上传输入框出现（比 networkidle 更可靠）
       bilibili_logger.info('   [-] 等待页面加载完成...')
-      await page.wait_for_load_state('networkidle', timeout=10000)
+      try:
+        # 等待文件上传输入框出现，最多等待 30 秒
+        await page.wait_for_selector('input[type="file"][accept=".mp4"]', timeout=30000)
+        bilibili_logger.info('   [-] 页面加载完成，找到上传输入框')
+      except Exception:
+        # 如果找不到 mp4 输入框，至少等待 DOM 加载完成
+        bilibili_logger.warning('   [-] 未找到上传输入框，等待 DOM 加载完成')
+        await page.wait_for_load_state('domcontentloaded', timeout=30000)
+
       await asyncio.sleep(self.step_delay)
 
       # 调试：检查页面元素
