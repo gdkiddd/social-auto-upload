@@ -77,6 +77,55 @@ def send_telegram_photo(photo_path, caption=None):
         return False
 
 
+def send_telegram_message(text, disable_notification=False):
+    """通过Telegram Bot发送文本消息
+
+    Args:
+        text: 消息文本内容
+        disable_notification: 是否静默发送（无声音）
+
+    Returns:
+        bool: 是否发送成功
+    """
+    try:
+        bot_token, chat_id = load_telegram_config()
+
+        if not bot_token or not chat_id:
+            tencent_logger.error("[+] Telegram Bot配置不完整")
+            return False
+
+        # Telegram Bot API URL
+        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+
+        # 准备请求数据
+        data = {
+            'chat_id': chat_id,
+            'text': text,
+            'disable_notification': disable_notification,
+            'parse_mode': 'HTML'  # 支持HTML格式
+        }
+
+        tencent_logger.info(f"[+] 发送Telegram消息到 chat_id={chat_id}")
+
+        response = requests.post(url, json=data, timeout=30)
+
+        if response.status_code == 200:
+            result = response.json()
+            if result.get('ok'):
+                tencent_logger.success("[+] Telegram消息已发送")
+                return True
+            else:
+                tencent_logger.error(f"[+] Telegram API返回错误: {result}")
+                return False
+        else:
+            tencent_logger.error(f"[+] Telegram发送失败: HTTP {response.status_code}")
+            return False
+
+    except Exception as e:
+        tencent_logger.error(f"[+] 发送Telegram消息异常: {e}")
+        return False
+
+
 def send_bark_notification(title, body):
     """发送Bark通知的辅助函数（备用）
 

@@ -31,6 +31,7 @@ from myUtils.account_manager import (
     get_accounts, set_current_account, get_current_account,
     check_account_cookie_exists
 )
+from myUtils.auth import send_telegram_message
 from myUtils.video_project import (
     load_uploading_info,
     save_uploading_info,
@@ -119,6 +120,22 @@ def send_bark_notification(title, content, logger):
             logger.warning(f"Bark 通知发送失败: HTTP {response.status_code}")
     except Exception as e:
         logger.error(f"Bark 通知发送异常: {e}")
+
+
+def send_notification(title, content, logger):
+    """发送通知到 Bark 和 Telegram"""
+    # 发送 Bark 通知
+    send_bark_notification(title, content, logger)
+
+    # 发送 Telegram 通知
+    telegram_text = f"<b>{title}</b>\n\n{content}"
+    try:
+        if send_telegram_message(telegram_text):
+            logger.success("Telegram 通知发送成功")
+        else:
+            logger.warning("Telegram 通知发送失败")
+    except Exception as e:
+        logger.error(f"Telegram 通知发送异常: {e}")
 
 
 def load_upload_status(logger):
@@ -400,6 +417,42 @@ def run_upload(platform_id, platform_name, video_folder_name, logger):
         return '失败'
 
 
+def run_upload_process(folder_number, folder_name, folder_path, logger, is_retry=False):
+    """执行上传流程
+
+    Args:
+        folder_number: 文件夹序号
+        folder_name: 文件夹名称
+        folder_path: 文件夹路径
+        logger: 日志对象
+        is_retry: 是否为重试
+
+    Returns:
+        dict: 上传结果 {platform_name: result}
+    """
+    retry_label = "（重试）" if is_retry else ""
+    logger.divider()
+    logger.info(f"步骤 4: 执行平台上传 {retry_label}")
+    logger.info(f"视频路径: {folder_path}")
+
+    upload_results = {}
+    for platform in PLATFORMS:
+        platform_id = platform['id']
+        platform_name = platform['name']
+
+        # 检查平台是否启用
+        if not is_platform_enabled(platform_id):
+            logger.warning(f"{platform_name} 已禁用，跳过")
+            upload_results[platform_name] = "跳过"
+            continue
+
+        # 执行上传
+        result = run_upload(platform_id, platform_name, folder_name, logger)
+        upload_results[platform_name] = result
+
+    return upload_results
+
+
 def main():
     """主函数"""
     logger = Logger()
@@ -425,7 +478,7 @@ def main():
             logger.info("获取下一个待上传视频")
             folder_number, folder_path = get_next_video_folder(SOURCE_DIR, logger=logger)
             if not folder_path:
-                send_bark_notification("自动上传结束", "所有视频已上传完成", logger)
+                send_notification("自动上传结束", "所有视频已上传完成", logger)
                 return
 
             folder_name = folder_path.name
@@ -444,37 +497,35 @@ def main():
         logger.divider()
         logger.info("步骤 2: 切换账户")
         if not switch_account(ACCOUNT_NAME, logger):
-            send_bark_notification("自动上传失败", f"切换账户失败: {ACCOUNT_NAME}", logger)
+            send_notification("自动上传失败", f"切换账户失败: {ACCOUNT_NAME}", logger)
             return
 
         # 3. 检查 Cookie
         logger.divider()
         logger.info("步骤 3: 检查 Cookie")
         if not check_cookies(ACCOUNT_NAME, logger):
-            send_bark_notification("自动上传失败", "Cookie 不完整，请先登录", logger)
+            send_notification("自动上传失败", "Cookie 不完整，请先登录", logger)
             return
 
-        # 4. 执行上传
-        logger.divider()
-        logger.info("步骤 4: 执行平台上传")
-        logger.info(f"视频路径: {folder_path}")
+        # 4. 执行上传（第一次）
+        upload_results = run_upload_process(folder_number, folder_name, folder_path, logger, is_retry=False)
 
-        upload_results = {}
-        for platform in PLATFORMS:
-            platform_id = platform['id']
-            platform_name = platform['name']
+        # 5. 检查是否有失败的平台，如果有则重试一次
+        failed_platforms = [name for name, result in upload_results.items() if result == "失败"]
+        if failed_platforms:
+            logger.divider()
+            logger.warning(f"检测到 {len(failed_platforms)} 个平台上传失败，准备重试...")
+            logger.info(f"失败的平台: {', '.join(failed_platforms)}")
 
-            # 检查平台是否启用
-            if not is_platform_enabled(platform_id):
-                logger.warning(f"{platform_name} 已禁用，跳过")
-                upload_results[platform_name] = "跳过"
-                continue
+            # 重试一次
+            retry_results = run_upload_process(folder_number, folder_name, folder_path, logger, is_retry=True)
 
-            # 执行上传
-            result = run_upload(platform_id, platform_name, folder_name, logger)
-            upload_results[platform_name] = result
+            # 合并结果：如果重试成功则更新结果
+            for platform_name, result in retry_results.items():
+                if result == "成功":
+                    upload_results[platform_name] = "成功"
 
-        # 5. 生成总结报告
+        # 6. 生成总结报告
         logger.divider()
         logger.info("📊 上传结果汇总")
 
@@ -489,10 +540,10 @@ def main():
         logger.divider()
         logger.info(f"总计: 成功 {success_count} | 失败 {failed_count} | 跳过 {skipped_count}")
 
-        # 6. 添加上传历史记录
+        # 7. 添加上传历史记录
         add_upload_history(folder_name, upload_results, logger)
 
-        # 7. 检查是否所有平台都成功
+        # 8. 检查是否所有平台都成功
         video_status = get_video_upload_status(folder_name, logger)
         enabled_platforms = [p for p in PLATFORMS if is_platform_enabled(p['id'])]
         total_enabled = len(enabled_platforms)
@@ -501,17 +552,18 @@ def main():
 
         logger.info(f"上传进度: {uploaded_platforms}/{total_enabled} 个平台已成功")
 
-        # 8. 发送 Bark 通知
+        # 9. 发送通知（不包含跳过的平台）
         end_time = datetime.now()
         duration = (end_time - logger.start_time).total_seconds()
 
-        # 构建详细的上传结果列表
+        # 构建详细的上传结果列表（只显示成功和失败的，不显示跳过的）
         platform_details = []
         for platform_name, result in upload_results.items():
-            icon = "✅" if result == "成功" else "❌" if result == "失败" else "⏭️ "
-            platform_details.append(f"{icon} {platform_name}: {result}")
+            if result != "跳过":  # 只显示成功和失败的
+                icon = "✅" if result == "成功" else "❌"
+                platform_details.append(f"{icon} {platform_name}: {result}")
 
-        platform_list = "\n".join(platform_details)
+        platform_list = "\n".join(platform_details) if platform_details else "无上传记录"
 
         # 根据进度决定标题和内容
         if uploaded_platforms >= total_enabled:
@@ -544,13 +596,13 @@ def main():
         content = f"""序号: {folder_number}
 视频: {folder_name}
 {status_summary}
-本次: 成功 {success_count} | 失败 {failed_count} | 跳过 {skipped_count}
+本次: 成功 {success_count} | 失败 {failed_count}
 耗时: {int(duration)}秒
 
 {platform_list}"""
 
         logger.divider()
-        send_bark_notification(title, content, logger)
+        send_notification(title, content, logger)
 
         if uploaded_platforms >= total_enabled:
             logger.success(f"✅ 所有任务完成！总耗时: {int(duration)}秒")
@@ -563,7 +615,7 @@ def main():
         logger.error(f"脚本执行异常: {e}")
         import traceback
         logger.error(traceback.format_exc())
-        send_bark_notification("自动上传异常", str(e), logger)
+        send_notification("自动上传异常", str(e), logger)
 
 
 if __name__ == "__main__":
